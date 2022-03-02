@@ -1,0 +1,2 @@
+run:
+	./target/debug/kiryuu
