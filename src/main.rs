@@ -16,7 +16,7 @@ async fn healthz() -> impl Responder {
 #[get("/announce")]
 async fn announce(params: web::Query<AnnounceRequest>) -> impl Responder {
     byte_functions::do_nothing();
-    println!("Got the following params: {:?}", params.infohash);
+    println!("Got the following params: {:?}", byte_functions::url_encoded_to_hex(&params.infohash));
     return "GG";
 }
 
