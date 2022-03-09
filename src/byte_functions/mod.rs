@@ -24,3 +24,21 @@ pub fn url_encoded_to_hex(urlenc: &str) -> String {
 
     return hex_str;
 }
+
+// Nooby way to convery an IPv4 string into vector of bytes
+// Error Handling: 0 (for now...)
+pub fn ip_str_to_bytes(ip_str: &str) -> Vec<u8> {
+    let mut bytes: Vec<u8> = vec![0; 4];
+    let parts: Vec<&str> = ip_str.split('.').collect();
+    
+    if parts.len() != 4 {
+        panic!("Not 4 parts...");
+    }
+
+    for i in 0..4 {
+        bytes[i] = parts.get(i).expect("Did not get part").parse().expect("Cannot parse into u8");
+    }
+
+    println!("Bytes is now {:?}", bytes);
+    return bytes;
+}

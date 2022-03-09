@@ -15,6 +15,7 @@ async fn healthz(req: HttpRequest) -> impl Responder {
     println!("Query string is {}", query);
     let conn_info = req.connection_info();
     let user_ip = conn_info.peer_addr().expect("Missing IP bruv");
+    byte_functions::ip_str_to_bytes(user_ip);
     println!("Bruh {:?}", user_ip);
     return "";
 }
