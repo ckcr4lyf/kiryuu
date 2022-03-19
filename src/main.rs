@@ -1,7 +1,7 @@
 mod byte_functions;
 mod query;
 
-use actix_web::{get, App, HttpServer, Responder, web, HttpRequest};
+use actix_web::{get, App, HttpServer, Responder, web, HttpRequest, HttpResponse, http::StatusCode};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -11,15 +11,23 @@ pub struct AnnounceRequest {
 }
 
 #[get("/healthz")]
-async fn healthz(req: HttpRequest) -> impl Responder {
+async fn healthz(req: HttpRequest) -> HttpResponse {    
     let query = req.query_string();
-    println!("Query string is {}", query);
-    let parsed = query::parse_announce(query);
+
+    let parsed =  match query::parse_announce(query) {
+        Ok(legit) => legit, // Just set `parsed` , let handler continue
+        Err(_) => {
+            // This will return for the parent function i.e. healthz()
+            return HttpResponse::build(StatusCode::BAD_REQUEST).body("NOT_OK\n");
+        }
+    };
+
     let conn_info = req.connection_info();
     let user_ip = conn_info.peer_addr().expect("Missing IP bruv");
+
     byte_functions::ip_str_port_u16_to_bytes(user_ip, parsed.port);
-    println!("Bruh {:?}", user_ip);
-    return "";
+
+    return HttpResponse::build(StatusCode::OK).body("OK\n");
 }
 
 #[get("/announce")]

@@ -7,9 +7,9 @@ pub struct AReq {
     pub port: u16,
 }
 
-pub fn parse_announce(query: &str) -> AReq {
+pub fn parse_announce(query: &str) -> Result<AReq, serde_qs::Error> {
     println!("The query is {}", query);
-    let parsed: AReq = qs::from_str(query).unwrap();
+    let parsed: AReq = qs::from_str(query)?;
     println!("Parsed it is {:?}", parsed);
-    return parsed;
+    return Ok(parsed);
 }
