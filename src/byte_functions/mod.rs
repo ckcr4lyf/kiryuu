@@ -17,6 +17,9 @@ pub fn url_encoded_to_hex(urlenc: &str) -> String {
             hex_str.push_str(&urlenc[i+1..i+3]);
             i += 3;
         } else {
+            // let b: u8 = the_char.into();
+            // println!("{}", the_char.to_digit(16).expect("GG")); // Cannot do this - this is for a hex val to the decimal i guess
+            // println!();
             hex_str.push_str(&hex::encode(the_char.to_string()));
             i += 1;
         }

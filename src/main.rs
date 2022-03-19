@@ -1,4 +1,5 @@
 mod byte_functions;
+mod query;
 
 use actix_web::{get, App, HttpServer, Responder, web, HttpRequest};
 use serde::Deserialize;
@@ -13,6 +14,7 @@ pub struct AnnounceRequest {
 async fn healthz(req: HttpRequest) -> impl Responder {
     let query = req.query_string();
     println!("Query string is {}", query);
+    query::parse_announce(query);
     let conn_info = req.connection_info();
     let user_ip = conn_info.peer_addr().expect("Missing IP bruv");
     byte_functions::ip_str_to_bytes(user_ip);
