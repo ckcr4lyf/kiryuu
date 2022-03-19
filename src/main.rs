@@ -16,9 +16,13 @@ async fn healthz(req: HttpRequest) -> HttpResponse {
 
     let parsed =  match query::parse_announce(query) {
         Ok(legit) => legit, // Just set `parsed` , let handler continue
-        Err(_) => {
-            // This will return for the parent function i.e. healthz()
-            return HttpResponse::build(StatusCode::BAD_REQUEST).body("NOT_OK\n");
+        Err(e) => match e {
+            query::QueryError::ParseFailure => {
+                return HttpResponse::build(StatusCode::BAD_REQUEST).body("Failed to parse announce\n");
+            }
+            query::QueryError::Custom(e) => {
+                return HttpResponse::build(StatusCode::BAD_REQUEST).body(e + "\n");
+            }
         }
     };
 

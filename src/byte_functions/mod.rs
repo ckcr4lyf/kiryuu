@@ -51,12 +51,3 @@ pub fn ip_str_port_u16_to_bytes(ip_str: &str, port: u16) -> Vec<u8> {
     println!("Bytes is now {:?}", bytes);
     return bytes;
 }
-
-pub fn ip_port_to_bin(ip_bytes: &Vec<u8>, port: u16) -> &Vec<u8> {
-
-    let mut port_vec: Vec<u8> = Vec::from(port.to_be_bytes());
-
-    // ip_bytes.append(&mut port_vec);
-
-    return ip_bytes;
-}
