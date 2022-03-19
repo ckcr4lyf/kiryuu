@@ -7,6 +7,19 @@ use crate::byte_functions;
 pub struct AReq {
     pub port: u16,
     pub info_hash: String,
+    /// The amount of bytes the ckient has left to download
+    /// for the purposes of a public tracker, the magnitude is insignificant
+    /// what we care about is zero/non-zero , since it tells use if they are:
+    /// zero left - seeder
+    /// non-zero left - leecher
+    left: String,
+}
+
+#[derive(Debug)]
+pub struct PeerInfo {
+    pub ip_port: Vec<u8>,
+    pub info_hash: String,
+    pub is_seeder: bool,
 }
 
 pub enum QueryError {
@@ -21,16 +34,25 @@ impl From<serde_qs::Error> for QueryError {
     }
 }
 
-pub fn parse_announce(query: &str) -> Result<AReq, QueryError> {
+pub fn parse_announce(ip_str: &str, query: &str) -> Result<PeerInfo, QueryError> {
     println!("The query is {}", query);
-    let mut parsed: AReq = qs::from_str(query)?;
+    let parsed: AReq = qs::from_str(query)?;
     println!("Parsed it is {:?}", parsed);
 
-    parsed.info_hash = byte_functions::url_encoded_to_hex(&parsed.info_hash);
+    let hex_str_info_hash = byte_functions::url_encoded_to_hex(&parsed.info_hash);
 
-    if parsed.info_hash.len() != 40 {
+    if hex_str_info_hash.len() != 40 {
         return Err(QueryError::Custom("Infohash was not 20 bytes".to_string()));
     }
 
-    return Ok(parsed);
+    let is_seeder = match parsed.left.as_str() {
+        "0" => true,
+        _ => false,
+    };
+
+    return Ok(PeerInfo{
+        ip_port: byte_functions::ip_str_port_u16_to_bytes(ip_str, parsed.port),
+        info_hash: hex_str_info_hash,
+        is_seeder,
+    });
 }

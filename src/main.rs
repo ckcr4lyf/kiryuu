@@ -12,9 +12,12 @@ pub struct AnnounceRequest {
 
 #[get("/healthz")]
 async fn healthz(req: HttpRequest) -> HttpResponse {    
+    
     let query = req.query_string();
+    let conn_info = req.connection_info();
+    let user_ip = conn_info.peer_addr().expect("Missing IP bruv");
 
-    let parsed =  match query::parse_announce(query) {
+    let parsed =  match query::parse_announce(user_ip, query) {
         Ok(legit) => legit, // Just set `parsed` , let handler continue
         Err(e) => match e {
             query::QueryError::ParseFailure => {
@@ -26,11 +29,8 @@ async fn healthz(req: HttpRequest) -> HttpResponse {
         }
     };
 
-    let conn_info = req.connection_info();
-    let user_ip = conn_info.peer_addr().expect("Missing IP bruv");
 
-    byte_functions::ip_str_port_u16_to_bytes(user_ip, parsed.port);
-
+    println!("Peer info: {:?}", parsed);
     return HttpResponse::build(StatusCode::OK).body("OK\n");
 }
 

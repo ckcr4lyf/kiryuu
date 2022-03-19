@@ -17,15 +17,12 @@ pub fn url_encoded_to_hex(urlenc: &str) -> String {
             hex_str.push_str(&urlenc[i+1..i+3]);
             i += 3;
         } else {
-            // let b: u8 = the_char.into();
-            // println!("{}", the_char.to_digit(16).expect("GG")); // Cannot do this - this is for a hex val to the decimal i guess
-            // println!();
             hex_str.push_str(&hex::encode(the_char.to_string()));
             i += 1;
         }
     }
 
-    return hex_str;
+    return hex_str.to_lowercase();
 }
 
 // Nooby way to convery an IPv4 string and a u16 port into vector of bytes
@@ -37,7 +34,7 @@ pub fn ip_str_port_u16_to_bytes(ip_str: &str, port: u16) -> Vec<u8> {
     let parts: Vec<&str> = ip_str.split('.').collect();
     
     if parts.len() != 4 {
-        panic!("Not 4 parts...");
+        panic!("Not 4 parts..."); // TODO: Error handling
     }
 
     for i in 0..4 {
