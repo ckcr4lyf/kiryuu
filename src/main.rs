@@ -14,10 +14,10 @@ pub struct AnnounceRequest {
 async fn healthz(req: HttpRequest) -> impl Responder {
     let query = req.query_string();
     println!("Query string is {}", query);
-    query::parse_announce(query);
+    let parsed = query::parse_announce(query);
     let conn_info = req.connection_info();
     let user_ip = conn_info.peer_addr().expect("Missing IP bruv");
-    byte_functions::ip_str_to_bytes(user_ip);
+    byte_functions::ip_str_port_u16_to_bytes(user_ip, parsed.port);
     println!("Bruh {:?}", user_ip);
     return "";
 }
