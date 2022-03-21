@@ -7,7 +7,8 @@ use crate::byte_functions;
 pub struct AReq {
     pub port: u16,
     pub info_hash: String,
-    /// The amount of bytes the ckient has left to download
+    
+    /// The amount of bytes the client has left to download
     /// for the purposes of a public tracker, the magnitude is insignificant
     /// what we care about is zero/non-zero , since it tells use if they are:
     /// zero left - seeder
