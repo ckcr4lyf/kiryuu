@@ -7,7 +7,7 @@ use crate::byte_functions;
 pub struct AReq {
     pub port: u16,
     pub info_hash: String,
-    
+
     /// The amount of bytes the client has left to download
     /// for the purposes of a public tracker, the magnitude is insignificant
     /// what we care about is zero/non-zero , since it tells use if they are:
@@ -36,9 +36,9 @@ impl From<serde_qs::Error> for QueryError {
 }
 
 pub fn parse_announce(ip_str: &str, query: &str) -> Result<PeerInfo, QueryError> {
-    println!("The query is {}", query);
+    // println!("The query is {}", query);
     let parsed: AReq = qs::from_str(query)?;
-    println!("Parsed it is {:?}", parsed);
+    // println!("Parsed it is {:?}", parsed);
 
     let hex_str_info_hash = byte_functions::url_encoded_to_hex(&parsed.info_hash);
 

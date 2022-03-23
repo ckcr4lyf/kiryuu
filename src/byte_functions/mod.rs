@@ -41,10 +41,10 @@ pub fn ip_str_port_u16_to_bytes(ip_str: &str, port: u16) -> Vec<u8> {
         bytes[i] = parts.get(i).expect("Did not get part").parse().expect("Cannot parse into u8");
     }
 
-    println!("Bytes is now {:?}", bytes);
+    // println!("Bytes is now {:?}", bytes);
     
     bytes.append(&mut Vec::from(port.to_be_bytes()));
 
-    println!("Bytes is now {:?}", bytes);
+    // println!("Bytes is now {:?}", bytes);
     return bytes;
 }
