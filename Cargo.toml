@@ -9,7 +9,7 @@ edition = "2021"
 actix-web = "4"
 serde = { version = "1.0.136", features = ["derive"] }
 serde_qs = "0.9.1"
-hex = "*"
+hex = "=0.4.2"
 redis = { version = "0.21.5", features = ["aio", "tokio-comp", "connection-manager"] }
 rand = "*"
 tokio = { version = "0.3", features = ["full"] }

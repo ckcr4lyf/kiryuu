@@ -2,13 +2,9 @@ mod byte_functions;
 mod query;
 mod db;
 
-use std::sync::Mutex;
-use rand::{thread_rng, Rng};
-use std::{thread, time};
-
-use actix_web::{rt, get, App, HttpServer, Responder, web, HttpRequest, HttpResponse, http::StatusCode};
-use redis::Commands;
-// use redis::AsyncCommands;
+use actix_web::{get, App, HttpServer, Responder, web, HttpRequest, HttpResponse, http::StatusCode};
+// use redis::Commands;
+use redis::AsyncCommands;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -19,41 +15,7 @@ pub struct AnnounceRequest {
 
 #[get("/healthz")]
 async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {    
-
-    // db::get_guys();
-
-    // req.app_data()
-    // let x = req.app_data::<AppState>().unwrap();
-
-    // let z = req.app_data::<AppState>().unwrap();
-
-    // &z.redis_connection.zrembylex("XD", 4u32, 6u32);
-
-
-
-
-    let y: i32 = 100;
-
-    // let guys: Vec<Vec<u8>> = (*x).redis_connection.zrangebyscore("abc", y, y).await.unwrap();
-
-    // let bruvva = req.app_data::<AppState>().unwrap();
-
-    // println!("Bruv is {:?}", data.bruv);
-
-    let req_no: u32 = thread_rng().gen();
-
-    println!("[REQ: {}] Gonna get lock and query redis for req", req_no);
-    
-    let mut rc = data.redis_connection.lock().unwrap();
-    let gg: Vec<u8> = rc.get("BRUV").unwrap();
-    println!("[REQ: {}] GG is {:?}. Going to sleep...", req_no, gg);
-
-    rt::time::sleep(time::Duration::from_millis(3000)).await;
-
-    println!("[REQ: {}] Finished sleeping. Mutex should not have unlocked yet innit?", req_no);
-
-
-    
+   
     let query = req.query_string();
     let conn_info = req.connection_info();
     let user_ip = conn_info.peer_addr().expect("Missing IP bruv");
@@ -70,6 +32,10 @@ async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         }
     };
 
+    // Get seeders
+    let mut rc = data.redis_connection.clone();
+    let seeders: Vec<Vec<u8>> = rc.zrangebyscore(parsed.info_hash + "_seeders", 0u64, 2_648_029_777_853u64).await.unwrap();
+    println!("Seeders are {:?}", seeders);
 
     // println!("Peer info: {:?}", parsed);
     return HttpResponse::build(StatusCode::OK).body("OK\n");
@@ -85,26 +51,17 @@ async fn announce(params: web::Query<AnnounceRequest>) -> impl Responder {
 
 // #[derive(Debug)]
 struct AppState {
-    // redis_connection: redis::aio::MultiplexedConnection,
-    // redis_connection: redis::aio::ConnectionManager,
-    bruv: u32,
-    redis_connection: Mutex<redis::Connection>,
-    // xd: String,
+    redis_connection: redis::aio::MultiplexedConnection,
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
 
     let redis = redis::Client::open("redis://127.0.0.1").unwrap();
-    // let redis_connection = redis.get_tokio_connection_manager().await.unwrap();
-    // let redis_connection = redis.get_multiplexed_tokio_connection().await.unwrap();
-    let redis_connection = redis.get_connection().unwrap();
+    let redis_connection = redis.get_multiplexed_tokio_connection().await.unwrap();
 
     let data = web::Data::new(AppState{
-        // redis_connection: redis_connection.clone(),
-        // redis_connection: redis_connection.clone(),
-        redis_connection: Mutex::new(redis_connection),
-        bruv: 69,
+        redis_connection: redis_connection,
     });
 
     return HttpServer::new(move || {
