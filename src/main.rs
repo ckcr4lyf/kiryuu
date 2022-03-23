@@ -44,15 +44,15 @@ async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 
     println!("[REQ: {}] Gonna get lock and query redis for req", req_no);
     
+    // This part takes one RTT on the redis connection - Send req, get response
     let mut rc = data.redis_connection.lock().unwrap();
     let gg: Vec<u8> = rc.get("BRUV").unwrap();
+    std::mem::drop(rc); // Explicitly unlock
+
     println!("[REQ: {}] GG is {:?}. Going to sleep...", req_no, gg);
 
-    rt::time::sleep(time::Duration::from_millis(3000)).await;
-
-    println!("[REQ: {}] Finished sleeping. Mutex should not have unlocked yet innit?", req_no);
-
-
+    // rt::time::sleep(time::Duration::from_millis(3000)).await;
+    // println!("[REQ: {}] Finished sleeping. Mutex should not have unlocked yet innit?", req_no);\
     
     let query = req.query_string();
     let conn_info = req.connection_info();
