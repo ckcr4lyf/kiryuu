@@ -14,6 +14,8 @@ pub struct AReq {
     /// zero left - seeder
     /// non-zero left - leecher
     left: String,
+
+    pub event: Option<String>,
 }
 
 #[derive(Debug)]
@@ -21,6 +23,7 @@ pub struct PeerInfo {
     pub ip_port: Vec<u8>,
     pub info_hash: String,
     pub is_seeder: bool,
+    pub event: Option<String>,
 }
 
 pub enum QueryError {
@@ -55,5 +58,6 @@ pub fn parse_announce(ip_str: &str, query: &str) -> Result<PeerInfo, QueryError>
         ip_port: byte_functions::ip_str_port_u16_to_bytes(ip_str, parsed.port),
         info_hash: hex_str_info_hash,
         is_seeder,
+        event: parsed.event,
     });
 }
