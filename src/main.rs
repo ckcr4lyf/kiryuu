@@ -3,9 +3,11 @@ mod query;
 mod db;
 
 use actix_web::{get, App, HttpServer, Responder, web, HttpRequest, HttpResponse, http::StatusCode};
-// use redis::Commands;
-use redis::AsyncCommands;
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use serde::Deserialize;
+
+const TWO_HOURS: u64 = 60 * 60 * 2 * 1000;
 
 #[derive(Debug, Deserialize)]
 pub struct AnnounceRequest {
@@ -32,10 +34,34 @@ async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         }
     };
 
-    // Get seeders
+        
+    let start = SystemTime::now();
+    let since_epoch = start.duration_since(UNIX_EPOCH).expect("fucked up");
+    let since_epoch_ms: u64 = u64::try_from(since_epoch.as_millis()).expect("fucc");
+
+    // Get seeders & leechers
     let mut rc = data.redis_connection.clone();
-    let seeders: Vec<Vec<u8>> = rc.zrangebyscore(parsed.info_hash + "_seeders", 0u64, 2_648_029_777_853u64).await.unwrap();
+
+    let (seeders, leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = redis::pipe()
+    .cmd("ZRANGEBYSCORE").arg(parsed.info_hash.clone() + "_seeders").arg(since_epoch_ms - TWO_HOURS).arg(since_epoch_ms)
+    .cmd("ZRANGEBYSCORE").arg(parsed.info_hash.clone() + "_leechers").arg(since_epoch_ms - TWO_HOURS).arg(since_epoch_ms)
+    .query_async(&mut rc).await.unwrap();
+
+
+    println!("Range is {} {}", since_epoch_ms - TWO_HOURS, since_epoch_ms);
+
+    let is_seeder = seeders.contains(&parsed.ip_port);
+
+    let is_leecher = match is_seeder {
+        true => false, // If it's a seeder, leecher must be false
+        false => leechers.contains(&parsed.ip_port), // otherwise we will search the next vector as well
+    };
+    
+    println!("My IP_port combo is {:?}", &parsed.ip_port);
     println!("Seeders are {:?}", seeders);
+    println!("Leechers are {:?}", leechers);
+    println!("is_seeder: {}", is_seeder);
+    println!("is_leecher: {}", is_leecher);
 
     // println!("Peer info: {:?}", parsed);
     return HttpResponse::build(StatusCode::OK).body("OK\n");
