@@ -78,34 +78,34 @@ async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 
     // let bg_rc = data.redis_connection.clone();
 
-    actix_web::rt::spawn(async move {
-        println!("GOING TO SLEEP");
-        actix_web::rt::time::sleep(Duration::from_millis(10000)).await;
-        println!("WOKE UP");
-        let x: i32 = rc.get("XD").await.unwrap();
-        println!("GOT X AS {}", x);
-        return "XD";
-    });
-
     let final_response: HttpResponse = match is_stopped {
-        true => match is_seeder {
-            true => {
+        true => {
+            if is_seeder {
                 seed_count_mod -= 1;
                 post_announce_pipeline.cmd("ZREM").arg(&seeders_key).arg(&parsed.ip_port).ignore(); // We dont care about the return value
                 HttpResponse::build(StatusCode::OK).body("TRUE TRUE\n")
-            },
-            false => {
+            } else if is_leecher {
                 leech_count_mod -= 1;
                 post_announce_pipeline.cmd("ZREM").arg(&leechers_key).arg(&parsed.ip_port).ignore(); // We dont care about the return value
                 HttpResponse::build(StatusCode::OK).body("TRUE FALSE\n")
-            },
+            } else {
+                HttpResponse::build(StatusCode::OK).body("FALSE FALSE\n")
+            }
         },
         false => {
             println!("not stopped");
             HttpResponse::build(StatusCode::OK).body("FALSE\n")
         }
     };
-    
+
+    actix_web::rt::spawn(async move {
+        println!("GOING TO SLEEP");
+        actix_web::rt::time::sleep(Duration::from_millis(10000)).await;
+        println!("WOKE UP");
+        let () = post_announce_pipeline.query_async(&mut rc).await.expect("Failed to execute pipe on redis");
+        return "XD";
+    });
+
     println!("My IP_port combo is {:?}", &parsed.ip_port);
     println!("Seeders are {:?}", seeders);
     println!("Leechers are {:?}", leechers);
