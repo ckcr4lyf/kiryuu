@@ -22,7 +22,7 @@ pub struct AReq {
 pub struct PeerInfo {
     pub ip_port: Vec<u8>,
     pub info_hash: String,
-    pub is_seeder: bool,
+    pub is_seeding: bool,
     pub event: Option<String>,
 }
 
@@ -49,7 +49,7 @@ pub fn parse_announce(ip_str: &str, query: &str) -> Result<PeerInfo, QueryError>
         return Err(QueryError::Custom("Infohash was not 20 bytes".to_string()));
     }
 
-    let is_seeder = match parsed.left.as_str() {
+    let is_seeding = match parsed.left.as_str() {
         "0" => true,
         _ => false,
     };
@@ -57,7 +57,7 @@ pub fn parse_announce(ip_str: &str, query: &str) -> Result<PeerInfo, QueryError>
     return Ok(PeerInfo{
         ip_port: byte_functions::ip_str_port_u16_to_bytes(ip_str, parsed.port),
         info_hash: hex_str_info_hash,
-        is_seeder,
+        is_seeding,
         event: parsed.event,
     });
 }

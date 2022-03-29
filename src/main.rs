@@ -71,36 +71,78 @@ async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     let mut seed_count_mod = 0;
     let mut leech_count_mod = 0;
 
-    let is_stopped = match &parsed.event {
-        Some(event_value) => event_value == "stopped",
-        None => false,        
+    let event = match &parsed.event {
+        Some(event_value) => event_value,
+        None => "unknown",
     };
 
     // let bg_rc = data.redis_connection.clone();
 
-    let final_response: HttpResponse = match is_stopped {
-        true => {
-            if is_seeder {
-                seed_count_mod -= 1;
-                post_announce_pipeline.cmd("ZREM").arg(&seeders_key).arg(&parsed.ip_port).ignore(); // We dont care about the return value
-                HttpResponse::build(StatusCode::OK).body("TRUE TRUE\n")
-            } else if is_leecher {
-                leech_count_mod -= 1;
-                post_announce_pipeline.cmd("ZREM").arg(&leechers_key).arg(&parsed.ip_port).ignore(); // We dont care about the return value
-                HttpResponse::build(StatusCode::OK).body("TRUE FALSE\n")
-            } else {
-                HttpResponse::build(StatusCode::OK).body("FALSE FALSE\n")
-            }
-        },
-        false => {
-            println!("not stopped");
-            HttpResponse::build(StatusCode::OK).body("FALSE\n")
+    let final_response: HttpResponse = if event == "stopped" {
+        if is_seeder {
+            println!("Stopped and is seeder");
+            seed_count_mod -= 1;
+            post_announce_pipeline.cmd("ZREM").arg(&seeders_key).arg(&parsed.ip_port).ignore(); // We dont care about the return value
+            HttpResponse::build(StatusCode::OK).body("TRUE TRUE\n")
+        } else if is_leecher {
+            println!("Stopped and is leecher");
+            leech_count_mod -= 1;
+            post_announce_pipeline.cmd("ZREM").arg(&leechers_key).arg(&parsed.ip_port).ignore(); // We dont care about the return value
+            HttpResponse::build(StatusCode::OK).body("TRUE FALSE\n")
+        } else {
+            println!("NA, dodgy");
+            HttpResponse::build(StatusCode::OK).body("FALSE FALSE\n")
         }
+    } else if parsed.is_seeding {
+
+        // New seeder
+        if is_seeder == false {
+            println!("Seeding now (new)");
+            post_announce_pipeline.cmd("ZADD").arg(&seeders_key).arg(time_now_ms).arg(&parsed.ip_port).ignore();
+            seed_count_mod += 1
+        }
+
+        // They just completed
+        if event == "completed" {
+            println!("Completed");    
+            // If they were previously leecher, remove from that pool
+            if is_leecher {
+                println!("Removing as old leecher");
+                post_announce_pipeline.cmd("ZREM").arg(&leechers_key).arg(&parsed.ip_port).ignore();
+                leech_count_mod -= 1
+            }
+
+            // Increment the downloaded count for the infohash stats
+            post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("downloaded").arg(1).ignore();
+        }
+
+        HttpResponse::build(StatusCode::OK).body("IS_SEEDING\n")
+    } else {
+
+        // New leecher
+        if is_leecher == false {
+            println!("New leecher");
+            post_announce_pipeline.cmd("ZADD").arg(&leechers_key).arg(time_now_ms).arg(&parsed.ip_port).ignore();
+            leech_count_mod += 1
+        }
+
+        HttpResponse::build(StatusCode::OK).body("IS_LEECHING\n")
     };
+
+    // Update seeder & leecher count, if required
+    if seed_count_mod != 0 {
+        println!("Seed count mod: {}", seed_count_mod);
+        post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("seeders").arg(seed_count_mod).ignore();
+    }
+
+    if leech_count_mod != 0 {
+        println!("Leech count mod: {}", leech_count_mod);
+        post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("leechers").arg(leech_count_mod).ignore();
+    }
 
     actix_web::rt::spawn(async move {
         println!("GOING TO SLEEP");
-        actix_web::rt::time::sleep(Duration::from_millis(10000)).await;
+        actix_web::rt::time::sleep(Duration::from_millis(2000)).await;
         println!("WOKE UP");
         let () = post_announce_pipeline.query_async(&mut rc).await.expect("Failed to execute pipe on redis");
         return "XD";
