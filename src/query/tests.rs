@@ -12,6 +12,6 @@ fn is_legit(){
     let mut p2: Vec<Vec<u8>> = Vec::new();
     // p2.push(no_bytes);
 
-    let gg = query::announce_reply(1, 2, p1, p2);
+    let gg = query::announce_reply(1, 2, &p1, &p2);
     println!("GG is {:?}", gg);
 }

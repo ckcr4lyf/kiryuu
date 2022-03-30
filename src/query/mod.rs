@@ -66,7 +66,7 @@ pub fn parse_announce(ip_str: &str, query: &str) -> Result<PeerInfo, QueryError>
 
 // fn peer_bytes_to_str
 
-pub fn announce_reply(seeders_count: usize, leechers_count: usize, seeders: Vec<Vec<u8>>, leechers: Vec<Vec<u8>>) -> Vec<u8> {
+pub fn announce_reply(seeders_count: usize, leechers_count: usize, seeders: &[Vec<u8>], leechers: &[Vec<u8>]) -> Vec<u8> {
     // This is the number of peers in the response, not total peer count
     let peers_length = seeders.len() + leechers.len();
 

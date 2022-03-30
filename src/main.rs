@@ -151,7 +151,7 @@ async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     println!("is_seeder: {}", is_seeder);
     println!("is_leecher: {}", is_leecher);
 
-    let bruvva_res = query::announce_reply(seeders.len(), leechers.len(), seeders, leechers);
+    let bruvva_res = query::announce_reply(seeders.len(), leechers.len(), &seeders[0..50], &leechers[0..50]);
 
     // return final_response;
     return HttpResponse::build(StatusCode::OK).body(bruvva_res);
