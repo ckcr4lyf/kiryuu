@@ -22,10 +22,11 @@ pub struct AnnounceRequest {
 async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {    
    
     let query = req.query_string();
+    println!("OG QUERY IS {}", query);
     let conn_info = req.connection_info();
     let user_ip = conn_info.peer_addr().expect("Missing IP bruv");
 
-    let parsed =  match query::parse_announce(user_ip, query) {
+    let parsed =  match query::parse_announce(user_ip, query.replace("%", "%25").as_bytes()) {
         Ok(legit) => legit, // Just set `parsed` , let handler continue
         Err(e) => match e {
             query::QueryError::ParseFailure => {

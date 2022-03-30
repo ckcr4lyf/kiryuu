@@ -40,11 +40,17 @@ impl From<serde_qs::Error> for QueryError {
     }
 }
 
-pub fn parse_announce(ip_str: &str, query: &str) -> Result<PeerInfo, QueryError> {
-    // println!("The query is {}", query);
-    let parsed: AReq = qs::from_str(query)?;
-    // println!("Parsed it is {:?}", parsed);
+pub fn parse_announce(ip_str: &str, query: &[u8]) -> Result<PeerInfo, QueryError> {
+    println!("The query is {:?}", query);
 
+    // Solution: manually parse & encoded infohash from `&info_hash=.........&xyz=.....
+    let parsed: AReq =  match qs::from_bytes(query) {
+        Ok(val) => val,
+        Err(e) => panic!("Err: {}", e),
+    };
+    println!("Parsed it is {:?}", parsed);
+
+    // let hex_str_info_hash = "XD";
     let hex_str_info_hash = byte_functions::url_encoded_to_hex(&parsed.info_hash);
 
     if hex_str_info_hash.len() != 40 {
@@ -58,7 +64,7 @@ pub fn parse_announce(ip_str: &str, query: &str) -> Result<PeerInfo, QueryError>
 
     return Ok(PeerInfo{
         ip_port: byte_functions::ip_str_port_u16_to_bytes(ip_str, parsed.port),
-        info_hash: hex_str_info_hash,
+        info_hash: hex_str_info_hash.to_string(),
         is_seeding,
         event: parsed.event,
     });
