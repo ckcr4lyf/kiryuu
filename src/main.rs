@@ -3,9 +3,7 @@ mod query;
 mod db;
 
 use actix_web::{get, App, HttpServer, Responder, web, HttpRequest, HttpResponse, http::StatusCode};
-use actix::Arbiter;
 use rand::{thread_rng, prelude::SliceRandom};
-use redis::AsyncCommands;
 use std::time::{SystemTime, UNIX_EPOCH, Duration};
 
 use serde::Deserialize;
@@ -136,16 +134,15 @@ async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     }
 
     if leech_count_mod != 0 {
-        println!("Leech count mod: {}", leech_count_mod);
+        println!("Leech `count mod: {}", leech_count_mod);
         post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("leechers").arg(leech_count_mod).ignore();
     }
 
     actix_web::rt::spawn(async move {
-        println!("GOING TO SLEEP");
-        actix_web::rt::time::sleep(Duration::from_millis(2000)).await;
-        println!("WOKE UP");
+        // println!("GOING TO SLEEP");
+        // actix_web::rt::time::sleep(Duration::from_millis(2000)).await;
+        // println!("WOKE UP");
         let () = post_announce_pipeline.query_async(&mut rc).await.expect("Failed to execute pipe on redis");
-        return "XD";
     });
 
     println!("My IP_port combo is {:?}", &parsed.ip_port);
@@ -154,10 +151,10 @@ async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     println!("is_seeder: {}", is_seeder);
     println!("is_leecher: {}", is_leecher);
 
-    return final_response;
+    let bruvva_res = query::announce_reply(seeders.len(), leechers.len(), seeders, leechers);
 
-    // println!("Peer info: {:?}", parsed);
-    // return HttpResponse::build(StatusCode::OK).body("OK\n");
+    // return final_response;
+    return HttpResponse::build(StatusCode::OK).body(bruvva_res);
 }
 
 #[get("/announce")]

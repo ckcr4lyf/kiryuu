@@ -1,3 +1,5 @@
+mod tests;
+
 use serde_qs as qs;
 use serde::Deserialize;
 
@@ -60,4 +62,22 @@ pub fn parse_announce(ip_str: &str, query: &str) -> Result<PeerInfo, QueryError>
         is_seeding,
         event: parsed.event,
     });
+}
+
+// fn peer_bytes_to_str
+
+pub fn announce_reply(seeders_count: usize, leechers_count: usize, seeders: Vec<Vec<u8>>, leechers: Vec<Vec<u8>>) -> Vec<u8> {
+    // This is the number of peers in the response, not total peer count
+    let peers_length = seeders.len() + leechers.len();
+
+    let response_body_string = "d8:completei".to_string() 
+    + &seeders_count.to_string()
+    + &"e10:incompletei".to_string() 
+    + &leechers_count.to_string()
+    + &"e8:intervali1800e12:min intervali1800e5:peers".to_string()
+    + &(peers_length * 6).to_string();
+
+    let response_body: Vec<u8> = [response_body_string.into_bytes(), seeders.concat(), leechers.concat(), "e".as_bytes().to_vec()].concat() ;
+
+    return response_body;
 }
