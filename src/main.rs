@@ -1,26 +1,21 @@
 mod byte_functions;
 mod query;
-mod db;
+mod constants;
 
 use actix_web::{get, App, HttpServer, Responder, web, HttpRequest, HttpResponse, http::header, http::StatusCode};
 use rand::{thread_rng, prelude::SliceRandom};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::Deserialize;
-
 // If not more than 31, possible not online
 // So dont waste bandwidth on redis query etc.
 const THIRTY_ONE_MINUTES: u64 = 60 * 31 * 1000;
 
-#[derive(Debug, Deserialize)]
-pub struct AnnounceRequest {
-    infohash: String,
-    port: u16,
-}
-
 #[get("/announce")]
-async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {    
+async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {    
    
+    let time_now = SystemTime::now().duration_since(UNIX_EPOCH).expect("fucked up");
+    let time_now_ms: u64 = u64::try_from(time_now.as_millis()).expect("fucc");
+
     let query = req.query_string();
     let conn_info = req.connection_info();
 
@@ -42,9 +37,6 @@ async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             }
         }
     };
-        
-    let time_now = SystemTime::now().duration_since(UNIX_EPOCH).expect("fucked up");
-    let time_now_ms: u64 = u64::try_from(time_now.as_millis()).expect("fucc");
 
     // Get seeders & leechers
     let mut rc = data.redis_connection.clone();
@@ -82,17 +74,13 @@ async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 
     // let bg_rc = data.redis_connection.clone();
 
-    let final_response: HttpResponse = if event == "stopped" {
+    if event == "stopped" {
         if is_seeder {
             seed_count_mod -= 1;
             post_announce_pipeline.cmd("ZREM").arg(&seeders_key).arg(&parsed.ip_port).ignore(); // We dont care about the return value
-            HttpResponse::build(StatusCode::OK).body("TRUE TRUE\n")
         } else if is_leecher {
             leech_count_mod -= 1;
             post_announce_pipeline.cmd("ZREM").arg(&leechers_key).arg(&parsed.ip_port).ignore(); // We dont care about the return value
-            HttpResponse::build(StatusCode::OK).body("TRUE FALSE\n")
-        } else {
-            HttpResponse::build(StatusCode::OK).body("FALSE FALSE\n")
         }
     } else if parsed.is_seeding {
 
@@ -113,17 +101,9 @@ async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             // Increment the downloaded count for the infohash stats
             post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("downloaded").arg(1u32).ignore();
         }
-
-        HttpResponse::build(StatusCode::OK).body("IS_SEEDING\n")
-    } else {
-
-        // New leecher
-        if is_leecher == false {
+    } else if is_leecher == false {
             post_announce_pipeline.cmd("ZADD").arg(&leechers_key).arg(time_now_ms).arg(&parsed.ip_port).ignore();
             leech_count_mod += 1
-        }
-
-        HttpResponse::build(StatusCode::OK).body("IS_LEECHING\n")
     };
 
     // Update seeder & leecher count, if required
@@ -134,16 +114,6 @@ async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     if leech_count_mod != 0 {
         post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("leechers").arg(leech_count_mod).ignore();
     }
-
-    actix_web::rt::spawn(async move {
-        let () = match post_announce_pipeline.query_async::<redis::aio::MultiplexedConnection, ()>(&mut rc).await {
-            Ok(_) => (),
-            Err(e) => {
-                println!("Err during pipe {}. Timenow: {}, scountmod: {}, lcountmod: {}", e, time_now_ms, seed_count_mod, leech_count_mod);
-                ()
-            },
-        };
-    });
 
     // endex = end index XD. seems in rust cannot select first 50 elements, or limit to less if vector doesnt have 50
     // e.g. &seeders[0..50] is panicking when seeders len is < 50. Oh well.
@@ -164,14 +134,38 @@ async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 
     let bruvva_res = query::announce_reply(scount + seed_count_mod, lcount + leech_count_mod, &seeders[0..seeder_endex], &leechers[0..leecher_endex]);
 
-    // return final_response;
+    let time_end = SystemTime::now().duration_since(UNIX_EPOCH).expect("fucked up");
+    let time_end_ms: u64 = u64::try_from(time_end.as_millis()).expect("fucc");
+
+    let req_duration = time_end_ms - time_now_ms;
+
+    post_announce_pipeline.cmd("INCR").arg(constants::ANNOUNCE_COUNT_KEY).ignore();
+    post_announce_pipeline.cmd("INCRBY").arg(constants::REQ_DURATION_KEY).arg(req_duration).ignore();
+
+    actix_web::rt::spawn(async move {
+        let () = match post_announce_pipeline.query_async::<redis::aio::MultiplexedConnection, ()>(&mut rc).await {
+            Ok(_) => (),
+            Err(e) => {
+                println!("Err during pipe {}. Timenow: {}, scountmod: {}, lcountmod: {}", e, time_now_ms, seed_count_mod, leech_count_mod);
+                ()
+            },
+        };
+    });
+
     return HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body(bruvva_res);
 }
 
 #[get("/healthz")]
-async fn announce(params: web::Query<AnnounceRequest>) -> impl Responder {
-    byte_functions::do_nothing();
-    return "GG";
+async fn healthz(data: web::Data<AppState>) -> HttpResponse {
+    let mut rc = data.redis_connection.clone();
+    let () = match redis::cmd("PING").query_async::<redis::aio::MultiplexedConnection, ()>(&mut rc).await {
+        Ok(_) => {
+            return HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body("OK");
+        },
+        Err(_) => {
+            return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).append_header(header::ContentType::plaintext()).body("FUCKED");
+        }
+    };
 }
 
 // #[derive(Debug)]
@@ -186,7 +180,7 @@ async fn main() -> std::io::Result<()> {
     let redis_connection = redis.get_multiplexed_tokio_connection().await.unwrap();
 
     let data = web::Data::new(AppState{
-        redis_connection: redis_connection,
+        redis_connection,
     });
 
     return HttpServer::new(move || {
