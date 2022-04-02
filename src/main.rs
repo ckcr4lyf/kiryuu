@@ -2,7 +2,7 @@ mod byte_functions;
 mod query;
 mod db;
 
-use actix_web::{get, App, HttpServer, Responder, web, HttpRequest, HttpResponse, http::StatusCode};
+use actix_web::{get, App, HttpServer, Responder, web, HttpRequest, HttpResponse, http::header, http::StatusCode};
 use rand::{thread_rng, prelude::SliceRandom};
 use std::time::{SystemTime, UNIX_EPOCH, Duration};
 
@@ -152,10 +152,24 @@ async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     println!("is_seeder: {}", is_seeder);
     println!("is_leecher: {}", is_leecher);
 
-    let bruvva_res = query::announce_reply(seeders.len(), leechers.len(), &seeders[0..50], &leechers[0..50]);
+    // endex = end index XD. seems in rust cannot select first 50 elements, or limit to less if vector doesnt have 50
+    // e.g. &seeders[0..50] is panicking when seeders len is < 50. Oh well.
+    let seeder_endex = if seeders.len() >= 50 {
+        50
+    } else {
+        seeders.len()
+    };
+
+    let leecher_endex = if leechers.len() >= 50 {
+        50
+    } else {
+        leechers.len()
+    };
+
+    let bruvva_res = query::announce_reply(seeders.len(), leechers.len(), &seeders[0..seeder_endex], &leechers[0..leecher_endex]);
 
     // return final_response;
-    return HttpResponse::build(StatusCode::OK).body(bruvva_res);
+    return HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body(bruvva_res);
 }
 
 #[get("/announce")]

@@ -81,7 +81,8 @@ pub fn announce_reply(seeders_count: usize, leechers_count: usize, seeders: &[Ve
     + &"e10:incompletei".to_string() 
     + &leechers_count.to_string()
     + &"e8:intervali1800e12:min intervali1800e5:peers".to_string()
-    + &(peers_length * 6).to_string();
+    + &(peers_length * 6).to_string()
+    + &":";
 
     let response_body: Vec<u8> = [response_body_string.into_bytes(), seeders.concat(), leechers.concat(), "e".as_bytes().to_vec()].concat() ;
 
