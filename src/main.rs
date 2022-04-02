@@ -175,7 +175,6 @@ struct AppState {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-
     let redis = redis::Client::open("redis://127.0.0.1").unwrap();
     let redis_connection = redis.get_multiplexed_tokio_connection().await.unwrap();
 
@@ -191,6 +190,7 @@ async fn main() -> std::io::Result<()> {
     })
     .bind(("0.0.0.0", 6969))?
     .max_connection_rate(8192)
+    .keep_alive(None)
     .run()
     .await;
 }
