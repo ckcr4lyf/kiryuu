@@ -22,7 +22,6 @@ pub struct AnnounceRequest {
 async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {    
    
     let query = req.query_string();
-    // println!("OG QUERY IS {}", query);
     let conn_info = req.connection_info();
 
     let user_ip = match conn_info.peer_addr() {
@@ -145,10 +144,6 @@ async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             },
         };
     });
-
-    // actix_web::rt::spawn(async move {
-    //     let () = post_announce_pipeline.query_async(&mut rc).await.expect("GG");
-    // });
 
     // endex = end index XD. seems in rust cannot select first 50 elements, or limit to less if vector doesnt have 50
     // e.g. &seeders[0..50] is panicking when seeders len is < 50. Oh well.
