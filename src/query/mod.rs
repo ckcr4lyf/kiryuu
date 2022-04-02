@@ -41,14 +41,12 @@ impl From<serde_qs::Error> for QueryError {
 }
 
 pub fn parse_announce(ip_str: &str, query: &[u8]) -> Result<PeerInfo, QueryError> {
-    println!("The query is {:?}", query);
 
     // Solution: manually parse & encoded infohash from `&info_hash=.........&xyz=.....
     let parsed: AReq =  match qs::from_bytes(query) {
         Ok(val) => val,
         Err(e) => panic!("Err: {}", e),
     };
-    println!("Parsed it is {:?}", parsed);
 
     // let hex_str_info_hash = "XD";
     let hex_str_info_hash = byte_functions::url_encoded_to_hex(&parsed.info_hash);

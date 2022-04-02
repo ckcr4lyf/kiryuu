@@ -4,7 +4,7 @@ mod db;
 
 use actix_web::{get, App, HttpServer, Responder, web, HttpRequest, HttpResponse, http::header, http::StatusCode};
 use rand::{thread_rng, prelude::SliceRandom};
-use std::time::{SystemTime, UNIX_EPOCH, Duration};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
 
@@ -18,13 +18,19 @@ pub struct AnnounceRequest {
     port: u16,
 }
 
-#[get("/healthz")]
+#[get("/announce")]
 async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {    
    
     let query = req.query_string();
-    println!("OG QUERY IS {}", query);
+    // println!("OG QUERY IS {}", query);
     let conn_info = req.connection_info();
-    let user_ip = conn_info.peer_addr().expect("Missing IP bruv");
+
+    let user_ip = match conn_info.peer_addr() {
+        Some(ip) => ip,
+        None => {
+            return HttpResponse::build(StatusCode::BAD_REQUEST).body("Missing IP");
+        }
+    };
 
     let parsed =  match query::parse_announce(user_ip, query.replace("%", "%25").as_bytes()) {
         Ok(legit) => legit, // Just set `parsed` , let handler continue
@@ -79,34 +85,28 @@ async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 
     let final_response: HttpResponse = if event == "stopped" {
         if is_seeder {
-            println!("Stopped and is seeder");
             seed_count_mod -= 1;
             post_announce_pipeline.cmd("ZREM").arg(&seeders_key).arg(&parsed.ip_port).ignore(); // We dont care about the return value
             HttpResponse::build(StatusCode::OK).body("TRUE TRUE\n")
         } else if is_leecher {
-            println!("Stopped and is leecher");
             leech_count_mod -= 1;
             post_announce_pipeline.cmd("ZREM").arg(&leechers_key).arg(&parsed.ip_port).ignore(); // We dont care about the return value
             HttpResponse::build(StatusCode::OK).body("TRUE FALSE\n")
         } else {
-            println!("NA, dodgy");
             HttpResponse::build(StatusCode::OK).body("FALSE FALSE\n")
         }
     } else if parsed.is_seeding {
 
         // New seeder
         if is_seeder == false {
-            println!("Seeding now (new)");
             post_announce_pipeline.cmd("ZADD").arg(&seeders_key).arg(time_now_ms).arg(&parsed.ip_port).ignore();
             seed_count_mod += 1
         }
 
         // They just completed
         if event == "completed" {
-            println!("Completed");    
             // If they were previously leecher, remove from that pool
             if is_leecher {
-                println!("Removing as old leecher");
                 post_announce_pipeline.cmd("ZREM").arg(&leechers_key).arg(&parsed.ip_port).ignore();
                 leech_count_mod -= 1
             }
@@ -120,7 +120,6 @@ async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 
         // New leecher
         if is_leecher == false {
-            println!("New leecher");
             post_announce_pipeline.cmd("ZADD").arg(&leechers_key).arg(time_now_ms).arg(&parsed.ip_port).ignore();
             leech_count_mod += 1
         }
@@ -130,27 +129,16 @@ async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 
     // Update seeder & leecher count, if required
     if seed_count_mod != 0 {
-        println!("Seed count mod: {}", seed_count_mod);
         post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("seeders").arg(seed_count_mod).ignore();
     }
 
     if leech_count_mod != 0 {
-        println!("Leech `count mod: {}", leech_count_mod);
         post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("leechers").arg(leech_count_mod).ignore();
     }
 
     actix_web::rt::spawn(async move {
-        // println!("GOING TO SLEEP");
-        // actix_web::rt::time::sleep(Duration::from_millis(2000)).await;
-        // println!("WOKE UP");
         let () = post_announce_pipeline.query_async(&mut rc).await.expect("Failed to execute pipe on redis");
     });
-
-    println!("My IP_port combo is {:?}", &parsed.ip_port);
-    println!("Seeders are {:?}", seeders);
-    println!("Leechers are {:?}", leechers);
-    println!("is_seeder: {}", is_seeder);
-    println!("is_leecher: {}", is_leecher);
 
     // endex = end index XD. seems in rust cannot select first 50 elements, or limit to less if vector doesnt have 50
     // e.g. &seeders[0..50] is panicking when seeders len is < 50. Oh well.
@@ -166,17 +154,15 @@ async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         leechers.len()
     };
 
-    let bruvva_res = query::announce_reply(seeders.len(), leechers.len(), &seeders[0..seeder_endex], &leechers[0..leecher_endex]);
+    let bruvva_res = query::announce_reply(seeders.len() + seed_count_mod, leechers.len() + leech_count_mod, &seeders[0..seeder_endex], &leechers[0..leecher_endex]);
 
     // return final_response;
     return HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body(bruvva_res);
 }
 
-#[get("/announce")]
+#[get("/healthz")]
 async fn announce(params: web::Query<AnnounceRequest>) -> impl Responder {
     byte_functions::do_nothing();
-    println!("Got the following params: {:?}", byte_functions::url_encoded_to_hex(&params.infohash));
-    println!("Port reported as {}", params.port);
     return "GG";
 }
 
@@ -201,7 +187,7 @@ async fn main() -> std::io::Result<()> {
         .service(healthz)
         .service(announce)
     })
-    .bind(("0.0.0.0", 8888))?
+    .bind(("0.0.0.0", 6969))?
     .run()
     .await;
 }
