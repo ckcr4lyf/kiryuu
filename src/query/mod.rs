@@ -43,10 +43,7 @@ impl From<serde_qs::Error> for QueryError {
 pub fn parse_announce(ip_str: &str, query: &[u8]) -> Result<PeerInfo, QueryError> {
 
     // Solution: manually parse & encoded infohash from `&info_hash=.........&xyz=.....
-    let parsed: AReq =  match qs::from_bytes(query) {
-        Ok(val) => val,
-        Err(e) => panic!("Err: {}", e),
-    };
+    let parsed: AReq = qs::from_bytes(query)?;
 
     // let hex_str_info_hash = "XD";
     let hex_str_info_hash = byte_functions::url_encoded_to_hex(&parsed.info_hash);
@@ -70,7 +67,7 @@ pub fn parse_announce(ip_str: &str, query: &[u8]) -> Result<PeerInfo, QueryError
 
 // fn peer_bytes_to_str
 
-pub fn announce_reply(seeders_count: usize, leechers_count: usize, seeders: &[Vec<u8>], leechers: &[Vec<u8>]) -> Vec<u8> {
+pub fn announce_reply(seeders_count: i64, leechers_count: i64, seeders: &[Vec<u8>], leechers: &[Vec<u8>]) -> Vec<u8> {
     // This is the number of peers in the response, not total peer count
     let peers_length = seeders.len() + leechers.len();
 

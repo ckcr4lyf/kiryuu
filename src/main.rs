@@ -73,8 +73,8 @@ async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     let mut post_announce_pipeline = redis::pipe();
 
     // These will contain how we change the total number of seeders / leechers by the end of the announce
-    let mut seed_count_mod = 0;
-    let mut leech_count_mod = 0;
+    let mut seed_count_mod: i64 = 0;
+    let mut leech_count_mod: i64 = 0;
 
     let event = match &parsed.event {
         Some(event_value) => event_value,
@@ -112,7 +112,7 @@ async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             }
 
             // Increment the downloaded count for the infohash stats
-            post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("downloaded").arg(1).ignore();
+            post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("downloaded").arg(1u32).ignore();
         }
 
         HttpResponse::build(StatusCode::OK).body("IS_SEEDING\n")
@@ -137,8 +137,18 @@ async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     }
 
     actix_web::rt::spawn(async move {
-        let () = post_announce_pipeline.query_async(&mut rc).await.expect("Failed to execute pipe on redis");
+        let () = match post_announce_pipeline.query_async::<redis::aio::MultiplexedConnection, ()>(&mut rc).await {
+            Ok(_) => (),
+            Err(e) => {
+                println!("Err during pipe {}. Timenow: {}, scountmod: {}, lcountmod: {}", e, time_now_ms, seed_count_mod, leech_count_mod);
+                ()
+            },
+        };
     });
+
+    // actix_web::rt::spawn(async move {
+    //     let () = post_announce_pipeline.query_async(&mut rc).await.expect("GG");
+    // });
 
     // endex = end index XD. seems in rust cannot select first 50 elements, or limit to less if vector doesnt have 50
     // e.g. &seeders[0..50] is panicking when seeders len is < 50. Oh well.
@@ -154,7 +164,10 @@ async fn healthz(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         leechers.len()
     };
 
-    let bruvva_res = query::announce_reply(seeders.len() + seed_count_mod, leechers.len() + leech_count_mod, &seeders[0..seeder_endex], &leechers[0..leecher_endex]);
+    let scount: i64 = seeders.len().try_into().expect("fucky wucky");
+    let lcount: i64 = leechers.len().try_into().expect("fucky wucky");
+
+    let bruvva_res = query::announce_reply(scount + seed_count_mod, lcount + leech_count_mod, &seeders[0..seeder_endex], &leechers[0..leecher_endex]);
 
     // return final_response;
     return HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body(bruvva_res);
@@ -188,6 +201,7 @@ async fn main() -> std::io::Result<()> {
         .service(announce)
     })
     .bind(("0.0.0.0", 6969))?
+    .max_connection_rate(8192)
     .run()
     .await;
 }
