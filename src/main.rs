@@ -2,19 +2,19 @@ mod byte_functions;
 mod query;
 mod constants;
 
-use actix_web::{get, App, HttpServer, Responder, web, HttpRequest, HttpResponse, http::header, http::StatusCode};
+use actix_web::{get, App, HttpServer, web, HttpRequest, HttpResponse, http::header, http::StatusCode};
 use rand::{thread_rng, prelude::SliceRandom};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 // If not more than 31, possible not online
 // So dont waste bandwidth on redis query etc.
-const THIRTY_ONE_MINUTES: u64 = 60 * 31 * 1000;
+const THIRTY_ONE_MINUTES: i64 = 60 * 31 * 1000;
 
 #[get("/announce")]
 async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {    
    
     let time_now = SystemTime::now().duration_since(UNIX_EPOCH).expect("fucked up");
-    let time_now_ms: u64 = u64::try_from(time_now.as_millis()).expect("fucc");
+    let time_now_ms: i64 = i64::try_from(time_now.as_millis()).expect("fucc");
 
     let query = req.query_string();
     let conn_info = req.connection_info();
@@ -62,6 +62,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     leechers.shuffle(&mut thread_rng());
 
     let mut post_announce_pipeline = redis::pipe();
+    post_announce_pipeline.cmd("ZADD").arg(constants::TORRENTS_KEY).arg(time_now_ms).arg(&parsed.info_hash).ignore(); // To "update" the torrent
 
     // These will contain how we change the total number of seeders / leechers by the end of the announce
     let mut seed_count_mod: i64 = 0;
@@ -135,7 +136,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     let bruvva_res = query::announce_reply(scount + seed_count_mod, lcount + leech_count_mod, &seeders[0..seeder_endex], &leechers[0..leecher_endex]);
 
     let time_end = SystemTime::now().duration_since(UNIX_EPOCH).expect("fucked up");
-    let time_end_ms: u64 = u64::try_from(time_end.as_millis()).expect("fucc");
+    let time_end_ms: i64 = i64::try_from(time_end.as_millis()).expect("fucc");
 
     let req_duration = time_end_ms - time_now_ms;
 
