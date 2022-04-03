@@ -29,6 +29,27 @@ pub fn url_encoded_to_hex(urlenc: &str) -> String {
 // This gives us the "tuple" of (ip, port) of the torrent client as 6 bytes
 // Which we will store directly into redis as is
 // Error Handling: 0 (for now...)
+pub fn ip_str_port_u16_to_bytes_u8(ip_str: &str, port: u16) -> [u8; 6] {
+    let mut result: [u8; 6] = [0; 6];
+    let mut parts = ip_str.split('.');
+
+    for i in 0..4 {
+        result[i] = match parts.next() {
+            Some(v) => match v.parse::<u8>() {
+                Ok(v) => v,
+                Err(_) => 0,
+            }
+            None => 0,
+        }
+    }    
+    
+    let portu8 = port.to_be_bytes();
+    result[4] = portu8[0];
+    result[5] = portu8[1];
+
+    return result;
+}
+
 pub fn ip_str_port_u16_to_bytes(ip_str: &str, port: u16) -> Vec<u8> {
     let mut bytes: Vec<u8> = vec![0; 4];
     let parts: Vec<&str> = ip_str.split('.').collect();

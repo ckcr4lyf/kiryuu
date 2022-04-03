@@ -1,2 +1,7 @@
 /target
 sandbox/
+
+# flamegraph stuffs
+*.svg
+*.data
+*.data.old
