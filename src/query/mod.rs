@@ -28,6 +28,14 @@ pub struct PeerInfo {
     pub event: Option<String>,
 }
 
+#[derive(Debug)]
+pub struct PeerInfou8 {
+    pub ip_port: [u8; 6],
+    pub info_hash: String,
+    pub is_seeding: bool,
+    pub event: Option<String>,
+}
+
 pub enum QueryError {
     ParseFailure,
     Custom(String),
@@ -59,6 +67,31 @@ pub fn parse_announce(ip_str: &str, query: &[u8]) -> Result<PeerInfo, QueryError
 
     return Ok(PeerInfo{
         ip_port: byte_functions::ip_str_port_u16_to_bytes(ip_str, parsed.port),
+        info_hash: hex_str_info_hash.to_string(),
+        is_seeding,
+        event: parsed.event,
+    });
+}
+
+pub fn parse_announce_u8(ip_str: &str, query: &[u8]) -> Result<PeerInfou8, QueryError> {
+
+    // Solution: manually parse & encoded infohash from `&info_hash=.........&xyz=.....
+    let parsed: AReq = qs::from_bytes(query)?;
+
+    // let hex_str_info_hash = "XD";
+    let hex_str_info_hash = byte_functions::url_encoded_to_hex(&parsed.info_hash);
+
+    if hex_str_info_hash.len() != 40 {
+        return Err(QueryError::Custom("Infohash was not 20 bytes".to_string()));
+    }
+
+    let is_seeding = match parsed.left.as_str() {
+        "0" => true,
+        _ => false,
+    };
+
+    return Ok(PeerInfou8{
+        ip_port: byte_functions::ip_str_port_u16_to_bytes_u8(ip_str, parsed.port),
         info_hash: hex_str_info_hash.to_string(),
         is_seeding,
         event: parsed.event,

@@ -25,6 +25,32 @@ pub fn url_encoded_to_hex(urlenc: &str) -> String {
     return hex_str.to_lowercase();
 }
 
+pub fn url_encoded_to_hex_v2(urlenc: &str) -> String {
+    let mut hex_str = String::with_capacity(40);
+    let mut chit = urlenc.chars();
+
+    loop {
+        match chit.next() {
+            Some(c) => {
+                match c {
+                    '%' => {
+                        let c1 = chit.next().expect("bruvva");
+                        hex_str.push(c1.to_ascii_lowercase());
+                        let c2 = chit.next().expect("bruvva");
+                        hex_str.push(c2.to_ascii_lowercase());
+                    },
+                    v => {
+                        hex_str.push_str(to_hex_op(v));
+                    }
+                }
+            },
+            None => break
+        }
+    }
+
+    return hex_str;
+}
+
 // Nooby way to convery an IPv4 string and a u16 port into vector of bytes
 // This gives us the "tuple" of (ip, port) of the torrent client as 6 bytes
 // Which we will store directly into redis as is
@@ -68,4 +94,100 @@ pub fn ip_str_port_u16_to_bytes(ip_str: &str, port: u16) -> Vec<u8> {
 
     // println!("Bytes is now {:?}", bytes);
     return bytes;
+}
+
+// The URL has % encoded hex valyes
+// Such as %C3. We want the literal "c3" for it
+// But if it comes as %c3 , then, well, also "c3"
+// So map uppercase to lower, lower as is, using match.
+fn get_lowercase(chr: char) -> char {
+    match chr {
+        'A' => 'a',
+        'B' => 'b',
+        'C' => 'c',
+        'D' => 'd',
+        'E' => 'e',
+        'F' => 'f',
+        'G' => 'g',
+        'H' => 'h',
+        'I' => 'i',
+        'J' => 'j',
+        'K' => 'k',
+        'L' => 'l',
+        'M' => 'm',
+        'N' => 'n',
+        'O' => 'o',
+        'P' => 'p',
+        'Q' => 'q',
+        'R' => 'r',
+        'S' => 's',
+        'T' => 't',
+        'U' => 'u',
+        'V' => 'v',
+        'W' => 'w',
+        'X' => 'x',
+        _ => 'a',
+    }
+}
+
+fn to_hex_op(chr: char) -> &'static str {
+    match chr {
+        'a' => "61",
+        'A' => "41",
+        'b' => "62",
+        'B' => "42",
+        'c' => "63",
+        'C' => "43",
+        'd' => "64",
+        'D' => "44",
+        'e' => "65",
+        'E' => "45",
+        'f' => "66",
+        'F' => "46",
+        'g' => "67",
+        'G' => "47",
+        'h' => "68",
+        'H' => "48",
+        'i' => "69",
+        'I' => "49",
+        'j' => "6a",
+        'J' => "4a",
+        'k' => "6b",
+        'K' => "4b",
+        'l' => "6c",
+        'L' => "4c",
+        'm' => "6d",
+        'M' => "4d",
+        'n' => "6e",
+        'N' => "4e",
+        'o' => "6f",
+        'O' => "4f",
+        'p' => "70",
+        'P' => "50",
+        'q' => "71",
+        'Q' => "51",
+        'r' => "72",
+        'R' => "52",
+        's' => "73",
+        'S' => "53",
+        't' => "74",
+        'T' => "54",
+        'u' => "75",
+        'U' => "55",
+        'v' => "76",
+        'V' => "56",
+        'w' => "77",
+        'W' => "57",
+        'x' => "78",
+        'X' => "58",
+        'y' => "79",
+        'Y' => "59",
+        'z' => "7a",
+        'Z' => "5a",
+        '*' => "2a",
+        '-' => "2d",
+        '.' => "2e",
+        '_' => "5f",
+        _ => "00",
+    }
 }
