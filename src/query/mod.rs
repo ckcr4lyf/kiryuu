@@ -79,7 +79,7 @@ pub fn parse_announce_u8(ip_str: &str, query: &[u8]) -> Result<PeerInfou8, Query
     let parsed: AReq = qs::from_bytes(query)?;
 
     // let hex_str_info_hash = "XD";
-    let hex_str_info_hash = byte_functions::url_encoded_to_hex(&parsed.info_hash);
+    let hex_str_info_hash = byte_functions::url_encoded_to_hex_v2(&parsed.info_hash);
 
     if hex_str_info_hash.len() != 40 {
         return Err(QueryError::Custom("Infohash was not 20 bytes".to_string()));
