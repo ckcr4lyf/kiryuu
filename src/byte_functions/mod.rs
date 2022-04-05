@@ -80,29 +80,25 @@ pub fn url_encoded_to_hex_v3(urlenc: &str) -> [u8; 20] {
     return bytes;
 }
 
-pub fn url_encoded_to_hex_v4(urlenc: &str) -> String {
-    
-    let mut ihash: [char; 40] = ['0'; 40];
+pub fn url_encoded_to_hex_v5(urlenc: &str) -> [u8; 20] {
+    let mut bytes: [u8; 20] = [0; 20];
     let mut chit= urlenc.chars();
     let mut i = 0;
 
 
-    while i < 40 {
+    while i < 20 {
         match chit.next() {
             Some(c) => {
                 match c {
                     '%' => {
                         let c1 = chit.next().expect("bruvva");
-                        ihash[i] = c1;
                         let c2 = chit.next().expect("bruvva");
-                        ihash[i+1] = c2;
-                        i += 2;
+                        bytes[i] = two_char_to_byte_v2(c1, c2);
+                        i += 1;
                     },
                     v => {
-                        let mut myc = to_hex_op(v).chars();
-                        ihash[i] = myc.next().expect("imp");
-                        ihash[i+1] = myc.next().expect("imp");
-                        i += 2;
+                        bytes[i] = v as u8;
+                        i += 1;
                     }
                 }
             },
@@ -110,7 +106,7 @@ pub fn url_encoded_to_hex_v4(urlenc: &str) -> String {
         }
     }
 
-    return ihash.iter().collect();
+    return bytes;
 }
 
 // Nooby way to convery an IPv4 string and a u16 port into vector of bytes
@@ -271,11 +267,31 @@ fn to_hex_decimal(chr: char) -> u8 {
         '8' => 8,
         '9' => 9,
         'a' => 10,
+        'A' => 10,
         'b' => 11,
+        'B' => 11,
         'c' => 12,
+        'C' => 12,
         'd' => 13,
+        'D' => 13,
         'e' => 14,
+        'E' => 14,
         'f' => 15,
+        'F' => 15,
         _ => 0, // Fucked up but yolo for now
     }
+}
+
+fn two_char_to_byte_v2(c1: char, c2: char) -> u8 {
+    return to_hex_decimal_v2(c1) * 16 + to_hex_decimal_v2(c2);
+}
+
+fn to_hex_decimal_v2(chr: char) -> u8 {
+
+    let x = chr as u8;
+    let lower_4 = x & 0x0f;
+    let is_letter = (x & 0x40) >> 6;
+    
+    return lower_4 + is_letter * 9;
+
 }
