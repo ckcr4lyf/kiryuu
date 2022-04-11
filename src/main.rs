@@ -144,6 +144,11 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     post_announce_pipeline.cmd("INCRBY").arg(constants::REQ_DURATION_KEY).arg(req_duration).ignore();
 
     actix_web::rt::spawn(async move {
+        // TODO:
+        // 0.1% chance to trigger a clean, 
+        // i.e. ZREM from _seeders & _leechers all peers > 31 minutes 
+        // (score less than now - thirty one minutes)
+
         let () = match post_announce_pipeline.query_async::<redis::aio::MultiplexedConnection, ()>(&mut rc).await {
             Ok(_) => (),
             Err(e) => {
