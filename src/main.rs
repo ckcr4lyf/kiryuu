@@ -3,7 +3,7 @@ mod query;
 mod constants;
 
 use actix_web::{get, App, HttpServer, web, HttpRequest, HttpResponse, http::header, http::StatusCode};
-use rand::{thread_rng, prelude::SliceRandom};
+use rand::{thread_rng, prelude::SliceRandom, Rng};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 // If not more than 31, possible not online
@@ -15,6 +15,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
    
     let time_now = SystemTime::now().duration_since(UNIX_EPOCH).expect("fucked up");
     let time_now_ms: i64 = i64::try_from(time_now.as_millis()).expect("fucc");
+    let max_limit = time_now_ms - THIRTY_ONE_MINUTES;
 
     let query = req.query_string();
     let conn_info = req.connection_info();
@@ -45,8 +46,8 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     let leechers_key = parsed.info_hash.clone() + "_leechers";
 
     let (seeders, mut leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = redis::pipe()
-    .cmd("ZRANGEBYSCORE").arg(&seeders_key).arg(time_now_ms - THIRTY_ONE_MINUTES).arg(time_now_ms)
-    .cmd("ZRANGEBYSCORE").arg(&leechers_key).arg(time_now_ms - THIRTY_ONE_MINUTES).arg(time_now_ms)
+    .cmd("ZRANGEBYSCORE").arg(&seeders_key).arg(max_limit).arg(time_now_ms)
+    .cmd("ZRANGEBYSCORE").arg(&leechers_key).arg(max_limit).arg(time_now_ms)
     .query_async(&mut rc).await.unwrap();
 
     let is_seeder = seeders.contains(&parsed.ip_port);
@@ -144,10 +145,12 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     post_announce_pipeline.cmd("INCRBY").arg(constants::REQ_DURATION_KEY).arg(req_duration).ignore();
 
     actix_web::rt::spawn(async move {
-        // TODO:
         // 0.1% chance to trigger a clean, 
-        // i.e. ZREM from _seeders & _leechers all peers > 31 minutes 
-        // (score less than now - thirty one minutes)
+        let chance = rand::thread_rng().gen_range(0..1000);
+        if chance == 0 {
+            post_announce_pipeline.cmd("ZREMRANGEBYSCORE").arg(&seeders_key).arg(0).arg(max_limit).ignore();
+            post_announce_pipeline.cmd("ZREMRANGEBYSCORE").arg(&leechers_key).arg(0).arg(max_limit).ignore();
+        }
 
         let () = match post_announce_pipeline.query_async::<redis::aio::MultiplexedConnection, ()>(&mut rc).await {
             Ok(_) => (),
