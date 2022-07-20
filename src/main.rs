@@ -22,11 +22,15 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     let conn_info = req.connection_info();
 
     let user_ip = match conn_info.peer_addr() {
+        // We need to use this in pour async function after req is dropped
+        // so we need to use `.to_owned()`
         Some(ip) => ip,
         None => {
             return HttpResponse::build(StatusCode::BAD_REQUEST).body("Missing IP");
         }
     };
+
+    let user_ip_owned = user_ip.to_owned();
 
     let parsed =  match query::parse_announce(user_ip, query.replace("%", "%25").as_bytes()) {
         Ok(legit) => legit, // Just set `parsed` , let handler continue
@@ -154,6 +158,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         }
 
         // log the summary
+        post_announce_pipeline.cmd("PUBLISH").arg("reqlog").arg(req_log::generate_csv(&user_ip_owned, &parsed.info_hash)).ignore();
 
 
         let () = match post_announce_pipeline.query_async::<redis::aio::MultiplexedConnection, ()>(&mut rc).await {
