@@ -1,6 +1,7 @@
 mod byte_functions;
 mod query;
 mod constants;
+mod req_log;
 
 use actix_web::{get, App, HttpServer, web, HttpRequest, HttpResponse, http::header, http::StatusCode};
 use rand::{thread_rng, prelude::SliceRandom, Rng};
@@ -26,6 +27,10 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             return HttpResponse::build(StatusCode::BAD_REQUEST).body("Missing IP");
         }
     };
+
+    // We need to use this in our actix:rt spawned function 
+    // after req is dropped so we need to use `.to_owned()`
+    let user_ip_owned = user_ip.to_owned();
 
     let parsed =  match query::parse_announce(user_ip, query.replace("%", "%25").as_bytes()) {
         Ok(legit) => legit, // Just set `parsed` , let handler continue
@@ -151,6 +156,10 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             post_announce_pipeline.cmd("ZREMRANGEBYSCORE").arg(&seeders_key).arg(0).arg(max_limit).ignore();
             post_announce_pipeline.cmd("ZREMRANGEBYSCORE").arg(&leechers_key).arg(0).arg(max_limit).ignore();
         }
+
+        // log the summary
+        post_announce_pipeline.cmd("PUBLISH").arg("reqlog").arg(req_log::generate_csv(&user_ip_owned, &parsed.info_hash)).ignore();
+
 
         let () = match post_announce_pipeline.query_async::<redis::aio::MultiplexedConnection, ()>(&mut rc).await {
             Ok(_) => (),
