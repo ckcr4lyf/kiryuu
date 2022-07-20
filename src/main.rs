@@ -1,6 +1,7 @@
 mod byte_functions;
 mod query;
 mod constants;
+mod req_log;
 
 use actix_web::{get, App, HttpServer, web, HttpRequest, HttpResponse, http::header, http::StatusCode};
 use rand::{thread_rng, prelude::SliceRandom, Rng};
@@ -151,6 +152,9 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             post_announce_pipeline.cmd("ZREMRANGEBYSCORE").arg(&seeders_key).arg(0).arg(max_limit).ignore();
             post_announce_pipeline.cmd("ZREMRANGEBYSCORE").arg(&leechers_key).arg(0).arg(max_limit).ignore();
         }
+
+        // log the summary
+
 
         let () = match post_announce_pipeline.query_async::<redis::aio::MultiplexedConnection, ()>(&mut rc).await {
             Ok(_) => (),
