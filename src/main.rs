@@ -186,7 +186,6 @@ async fn healthz(data: web::Data<AppState>) -> HttpResponse {
     };
 }
 
-// #[derive(Debug)]
 struct AppState {
     redis_connection: redis::aio::MultiplexedConnection,
 }

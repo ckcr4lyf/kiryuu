@@ -1,5 +1,3 @@
-mod tests;
-
 use serde_qs as qs;
 use serde::Deserialize;
 
@@ -82,4 +80,25 @@ pub fn announce_reply(seeders_count: i64, leechers_count: i64, seeders: &[Vec<u8
     let response_body: Vec<u8> = [response_body_string.into_bytes(), seeders.concat(), leechers.concat(), "e".as_bytes().to_vec()].concat() ;
 
     return response_body;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_legit(){
+        let bytes: Vec<u8> = Vec::from([1, 2, 3, 4]);
+        let _no_bytes: Vec<u8> = Vec::from([]);
+    
+        let mut p1: Vec<Vec<u8>> = Vec::new();
+        p1.push(bytes);
+        
+        let p2: Vec<Vec<u8>> = Vec::new();
+        // p2.push(no_bytes);
+    
+        // TODO: Actually implement a test here...
+        let gg = announce_reply(1, 2, &p1, &p2);
+        println!("GG is {:?}", gg);
+    }
 }
