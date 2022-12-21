@@ -12,3 +12,4 @@ serde_qs = "0.9.1"
 hex = "=0.4.2"
 redis = { version = "0.21.5", features = ["aio", "tokio-comp", "connection-manager"] }
 rand = "*"
+clap = { version = "4.0.30", features = ["derive"] }
