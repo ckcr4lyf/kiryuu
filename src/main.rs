@@ -6,6 +6,16 @@ mod req_log;
 use actix_web::{get, App, HttpServer, web, HttpRequest, HttpResponse, http::header, http::StatusCode};
 use rand::{thread_rng, prelude::SliceRandom, Rng};
 use std::time::{SystemTime, UNIX_EPOCH};
+use clap::Parser;
+
+/// Simple
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Name of port
+    #[arg(short, long)]
+    port: u16,
+}
 
 // If not more than 31, possible not online
 // So dont waste bandwidth on redis query etc.
@@ -192,6 +202,7 @@ struct AppState {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    let args = Args::parse();
     let redis = redis::Client::open("redis://127.0.0.1").unwrap();
     let redis_connection = redis.get_multiplexed_tokio_connection().await.unwrap();
 
@@ -205,7 +216,7 @@ async fn main() -> std::io::Result<()> {
         .service(healthz)
         .service(announce)
     })
-    .bind(("0.0.0.0", 6969))?
+    .bind(("0.0.0.0", args.port))?
     .max_connection_rate(8192)
     .keep_alive(None)
     .run()
