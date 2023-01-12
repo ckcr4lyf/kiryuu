@@ -14,7 +14,7 @@ use clap::Parser;
 struct Args {
     /// Name of port
     #[arg(short, long)]
-    port: u16,
+    port: Option<u16>,
 }
 
 // If not more than 31, possible not online
@@ -210,13 +210,21 @@ async fn main() -> std::io::Result<()> {
         redis_connection,
     });
 
+    let altPort = args.port.unwrap_or_else(|| 6969);
+
+    let port = if let Some(x) = args.port {
+        x
+    } else {
+        6969
+    };
+
     return HttpServer::new(move || {
         App::new()
         .app_data(data.clone())
         .service(healthz)
         .service(announce)
     })
-    .bind(("0.0.0.0", args.port))?
+    .bind(("0.0.0.0", port))?
     .max_connection_rate(8192)
     .keep_alive(None)
     .run()
