@@ -12,7 +12,7 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// Name of port
+    /// port for tracker to listen on
     #[arg(short, long)]
     port: Option<u16>,
 }
@@ -210,13 +210,7 @@ async fn main() -> std::io::Result<()> {
         redis_connection,
     });
 
-    let altPort = args.port.unwrap_or_else(|| 6969);
-
-    let port = if let Some(x) = args.port {
-        x
-    } else {
-        6969
-    };
+    let port = args.port.unwrap_or_else(|| 6969);
 
     return HttpServer::new(move || {
         App::new()
