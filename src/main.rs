@@ -12,9 +12,17 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// Name of port
-    #[arg(short, long)]
-    port: u16,
+    /// Port for tracker to listen on. Default: 6969
+    #[arg(long)]
+    port: Option<u16>,
+
+    /// IP to bind tracker to. Default: 0.0.0.0
+    #[arg(long)]
+    host: Option<String>,
+
+    /// Address of redis instance. Default: 127.0.0.1:6379
+    #[arg(long)]
+    redis_host: Option<String>
 }
 
 // If not more than 31, possible not online
@@ -203,12 +211,17 @@ struct AppState {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let args = Args::parse();
-    let redis = redis::Client::open("redis://127.0.0.1").unwrap();
+
+    let redis_host = args.redis_host.unwrap_or_else(|| "127.0.0.1:6379".to_string());
+    let redis = redis::Client::open("redis://".to_string() + &redis_host).unwrap();
     let redis_connection = redis.get_multiplexed_tokio_connection().await.unwrap();
 
     let data = web::Data::new(AppState{
         redis_connection,
     });
+
+    let port = args.port.unwrap_or_else(|| 6969);
+    let host = args.host.unwrap_or_else(|| "0.0.0.0".to_string());
 
     return HttpServer::new(move || {
         App::new()
@@ -216,7 +229,7 @@ async fn main() -> std::io::Result<()> {
         .service(healthz)
         .service(announce)
     })
-    .bind(("0.0.0.0", args.port))?
+    .bind((host, port))?
     .max_connection_rate(8192)
     .keep_alive(None)
     .run()
