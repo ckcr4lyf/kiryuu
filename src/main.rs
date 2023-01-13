@@ -12,9 +12,13 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// port for tracker to listen on
+    /// Port for tracker to listen on. Default: 6969
     #[arg(short, long)]
     port: Option<u16>,
+
+    /// IP to bind tracker to. Default: 0.0.0.0
+    #[arg(short, long)]
+    host: Option<String>,
 }
 
 // If not more than 31, possible not online
@@ -211,6 +215,7 @@ async fn main() -> std::io::Result<()> {
     });
 
     let port = args.port.unwrap_or_else(|| 6969);
+    let host = args.host.unwrap_or_else(|| "0.0.0.0".to_string());
 
     return HttpServer::new(move || {
         App::new()
@@ -218,7 +223,7 @@ async fn main() -> std::io::Result<()> {
         .service(healthz)
         .service(announce)
     })
-    .bind(("0.0.0.0", port))?
+    .bind((host, port))?
     .max_connection_rate(8192)
     .keep_alive(None)
     .run()
