@@ -13,12 +13,16 @@ use clap::Parser;
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Port for tracker to listen on. Default: 6969
-    #[arg(short, long)]
+    #[arg(long)]
     port: Option<u16>,
 
     /// IP to bind tracker to. Default: 0.0.0.0
-    #[arg(short, long)]
+    #[arg(long)]
     host: Option<String>,
+
+    /// Address of redis instance. Default: 127.0.0.1:6379
+    #[arg(long)]
+    redis_host: Option<String>
 }
 
 // If not more than 31, possible not online
@@ -207,7 +211,9 @@ struct AppState {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let args = Args::parse();
-    let redis = redis::Client::open("redis://127.0.0.1").unwrap();
+
+    let redis_host = args.redis_host.unwrap_or_else(|| "127.0.0.1:6379".to_string());
+    let redis = redis::Client::open("redis://".to_string() + &redis_host).unwrap();
     let redis_connection = redis.get_multiplexed_tokio_connection().await.unwrap();
 
     let data = web::Data::new(AppState{
