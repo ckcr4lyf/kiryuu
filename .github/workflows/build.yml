@@ -65,13 +65,17 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v3
 
-      - name: Connect to Redis
-        # Runs a script that creates a Redis client, populates
-        # the client with data, and retrieves data
-        run: | 
-          cargo build
-          ./target/debug/kiryuu --redis-host 127.0.0.1:6379 &
-          curl -v http://127.0.0.1:6969/healthz
-          curl -v http://127.0.0.1:6969/announce
-          netstat -ntlp
-          kill -9 `lsof -i:6969 -t`
+      - name: Build kiryuu
+        run: cargo build
+
+      - name: Run kiryuu (in background)
+        run: ./target/debug/kiryuu --redis-host 127.0.0.1:6379 &
+
+      - name: Healthcheck
+        run: curl -v http://127.0.0.1:6969/healthz
+      
+      - name: Announce
+        run: curl -v http://127.0.0.1:6969/announce
+
+      - name: Kill Kiryuu
+        run: kill -9 `lsof -i:6969 -t`
