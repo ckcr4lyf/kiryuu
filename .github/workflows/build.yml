@@ -69,7 +69,8 @@ jobs:
         # Runs a script that creates a Redis client, populates
         # the client with data, and retrieves data
         run: | 
-          cargo run -- --redis-host 127.0.0.1:6379 &
+          cargo build
+          ./target/debug/kiryuu --redis-host 127.0.0.1:6379 &
           curl -v http://127.0.0.1:6969/healthz
           curl -v http://127.0.0.1:6969/announce
           netstat -ntlp
