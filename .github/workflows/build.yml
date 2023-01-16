@@ -42,3 +42,27 @@ jobs:
         continue-on-error: false
         with:
           command: test
+
+  redis-test:
+    name: Test with redis-test
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis
+
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      # Downloads a copy of the code in your repository before running CI tests
+      - name: Check out repository code
+        uses: actions/checkout@v3
+
+      - name: Connect to Redis
+        # Runs a script that creates a Redis client, populates
+        # the client with data, and retrieves data
+        run: cargo run -- --redis-host redis:6379        
