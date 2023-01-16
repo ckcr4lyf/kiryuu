@@ -68,4 +68,9 @@ jobs:
       - name: Connect to Redis
         # Runs a script that creates a Redis client, populates
         # the client with data, and retrieves data
-        run: cargo run -- --redis-host 127.0.0.1:6379        
+        run: | 
+          cargo run -- --redis-host 127.0.0.1:6379 &
+          curl -v http://127.0.0.1:6969/healthz
+          curl -v http://127.0.0.1:6969/announce
+          netstat -ntlp
+          kill -9 `lsof -i:6969 -t`
