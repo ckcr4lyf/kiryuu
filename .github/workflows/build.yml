@@ -51,6 +51,9 @@ jobs:
       redis:
         image: redis
 
+        ports:
+          - 6379:6379
+
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s
@@ -65,4 +68,4 @@ jobs:
       - name: Connect to Redis
         # Runs a script that creates a Redis client, populates
         # the client with data, and retrieves data
-        run: cargo run -- --redis-host redis:6379        
+        run: cargo run -- --redis-host 127.0.0.1:6379        
