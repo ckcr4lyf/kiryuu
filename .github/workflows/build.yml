@@ -10,6 +10,9 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v3
 
+      - name: try docker
+        uses: docker://ghcr.io/ckcr4lyf/xd:latest
+
       - name: Install stable toolchain
         uses: actions-rs/toolchain@v1
         with:
