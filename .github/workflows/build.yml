@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install stable toolchain
         uses: actions-rs/toolchain@v1
@@ -42,3 +42,47 @@ jobs:
         continue-on-error: false
         with:
           command: test
+
+  redis-test:
+    name: Test with redis-test
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis
+
+        ports:
+          - 6379:6379
+
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      # Downloads a copy of the code in your repository before running CI tests
+      - name: Check out repository code
+        uses: actions/checkout@v3
+
+      - name: Build kiryuu
+        run: cargo build
+
+      - name: Run kiryuu (in background)
+        run: ./target/debug/kiryuu --redis-host 127.0.0.1:6379 &
+
+      - name: Healthcheck
+        run: |
+          if [[ "$(curl -s -o /dev/null -w ''%{http_code}'' http://127.0.0.1:6969/healthz)" != "200" ]]
+            then exit 1
+            else exit 0
+          fi
+
+      - name: Docker healthcheck
+        uses: docker://ghcr.io/ckcr4lyf/xd:latest          
+      
+      - name: Announce
+        run: curl -v http://127.0.0.1:6969/announce
+
+      - name: Kill Kiryuu
+        run: kill -9 `lsof -i:6969 -t`
