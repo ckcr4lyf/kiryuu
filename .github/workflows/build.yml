@@ -91,4 +91,4 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: tcpdump.log
-          path: /logs/tcpdump.log
+          path: ./tcpdump.log
