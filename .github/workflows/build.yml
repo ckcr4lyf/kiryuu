@@ -4,44 +4,17 @@ name: Build & Test
 
 jobs:
   check:
-    name: Check
+    name: Build & Test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
         uses: actions/checkout@v3
 
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+      - name: Build
+        run: cargo build --verbose
 
-      - name: Run cargo check
-        uses: actions-rs/cargo@v1
-        continue-on-error: false
-        with:
-          command: check
-
-  test:
-    name: Test Suite
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v2
-
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-
-      - name: Run cargo test
-        uses: actions-rs/cargo@v1
-        continue-on-error: false
-        with:
-          command: test
+      - name: Test
+        run: cargo test --verbose
 
   redis-test:
     name: Test with redis-test
@@ -111,7 +84,7 @@ jobs:
           fi
 
       - name: Docker qbit
-        uses: ckcr4lyf/actions-kiryuu-qbit-test@v2
+        uses: ckcr4lyf/actions-kiryuu-qbit-test@v2.1
         with:
           torrent_name: hello.txt.torrent
 
