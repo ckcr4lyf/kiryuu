@@ -79,7 +79,7 @@ jobs:
       - name: Create file, torrent. Add to qbit-svc
         run: |
           whoami
-          chmod -R 777 /qbit-svc
+          sudo chmod -R 777 /qbit-svc
           ls -l /qbit-svc
           mkdir /tmp/imdl
           wget -O imdl.tar.gz https://github.com/casey/intermodal/releases/download/v0.1.12/imdl-v0.1.12-x86_64-unknown-linux-musl.tar.gz
