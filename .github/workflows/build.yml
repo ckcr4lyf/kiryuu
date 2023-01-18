@@ -112,18 +112,11 @@ jobs:
 
       - name: Docker qbit
         uses: ckcr4lyf/actions-kiryuu-qbit-test@latest
-      
-      - name: Announce
-        run: curl -v http://127.0.0.1:6969/announce
+        with:
+          torrent_name: hello.txt.torrent
 
       - name: Kill Kiryuu
         run: kill -9 `lsof -i:6969 -t`
-
-      - name: Upload qBittorrent service log
-        uses: actions/upload-artifact@v3
-        with:
-          name: qbit_data
-          path: /qbit-svc/downloads
 
       - name: tcpdump logs
         uses: actions/upload-artifact@v3
