@@ -81,6 +81,7 @@ jobs:
           ifconfig
           sudo apt-get -y install tcpdump
           tcpdump --version
+          sudo tcpdump -nnSX port 6969 -i docker0 &>tcpdump_host.log &
           whoami
           sudo chmod -R 777 /qbit-svc
           ls -l /qbit-svc
@@ -121,10 +122,12 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: qbit_svc_log.txt
-          path: /qbit-svc/logs/qbittorrent.log   
+          path: /qbit-svc/logs/qbittorrent.log
 
-      - name: tcpdump log
+      - name: tcpdump logs
         uses: actions/upload-artifact@v3
         with:
-          name: tcpdump.log
-          path: ./tcpdump.log
+          name: tcpdump_logs
+          path: |
+            ./tcpdump.log
+            ./tcpdump_host.log
