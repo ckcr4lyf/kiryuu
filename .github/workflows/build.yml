@@ -69,8 +69,6 @@ jobs:
         volumes:
           - /qbit-svc/downloads:/downloads
           - /qbit-svc/watch:/watch
-          - /qbit-svc/config:/root/.config/qBittorrent
-          - /qbit-svc/local-share:/root/.local/share/qBittorrent
 
     steps:
       # Downloads a copy of the code in your repository before running CI tests
@@ -125,10 +123,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: qbit_data
-          path: |
-            /qbit-svc/config
-            /qbit-svc/local-share
-            !/qbit-svc/config/ipc-socket
+          path: /qbit-svc/downloads
 
       - name: tcpdump logs
         uses: actions/upload-artifact@v3
