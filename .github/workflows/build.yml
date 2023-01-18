@@ -79,7 +79,7 @@ jobs:
           fi
 
       - name: Docker qbit
-        uses: ckcr4lyf/actions-kiryuu-qbit-test
+        uses: ckcr4lyf/actions-kiryuu-qbit-test@latest
       
       - name: Announce
         run: curl -v http://127.0.0.1:6969/announce
