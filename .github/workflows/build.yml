@@ -48,24 +48,28 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v3
 
-      - name: Create file, torrent. Add to qbit-svc
+      - name: chmod the qbit seeder volumes
+        run: sudo chmod -R 777 /qbit-svc
+
+      - name: Start tcpdump on shared docker interface
         run: |
-          ifconfig
-          sudo apt-get -y install tcpdump
-          tcpdump --version
           IF_NAME="$(ifconfig | grep -B1 "172.18.0.1" | head -n1 | awk '{print $1}' | cut -d ':' -f1)"
-          echo $IF_NAME
           sudo tcpdump -nnSX port 6969 -i $IF_NAME &>tcpdump_host.log &
-          whoami
-          sudo chmod -R 777 /qbit-svc
-          ls -l /qbit-svc
+
+      - name: Download imdl (thanks @casey)
+        run: |
           mkdir /tmp/imdl
           wget -O imdl.tar.gz https://github.com/casey/intermodal/releases/download/v0.1.12/imdl-v0.1.12-x86_64-unknown-linux-musl.tar.gz
           tar xvzf imdl.tar.gz -C /tmp/imdl
+
+      - name: Make dummy hello torrent (announce to kiryuu IP)
+        run: |
           echo "hello" > hello.txt
           sha256sum hello.txt
           /tmp/imdl/imdl torrent create -a http://172.17.0.1:6969/announce hello.txt
-          cp hello.txt /qbit-svc/downloads/
+
+      - name: Copy text file to seeder qbit instance
+        run: cp hello.txt /qbit-svc/downloads/
 
       - name: Build kiryuu
         run: cargo build
@@ -76,7 +80,7 @@ jobs:
       - name: Copy torrent to watch dir
         run: cp hello.txt.torrent /qbit-svc/watch/
 
-      - name: Healthcheck
+      - name: Healthcheck on kiryuu
         run: |
           if [[ "$(curl -s -o /dev/null -w ''%{http_code}'' http://127.0.0.1:6969/healthz)" != "200" ]]
             then exit 1
