@@ -69,17 +69,32 @@ jobs:
         volumes:
           - /qbit-svc/downloads:/downloads
           - /qbit-svc/watch:/watch
+          - /qbit-svc/logs:/root/.local/share/qBittorrent/logs
 
     steps:
       # Downloads a copy of the code in your repository before running CI tests
       - name: Check out repository code
         uses: actions/checkout@v3
 
+      - name: Create file, torrent. Add to qbit-svc
+        run: |
+          mkdir /tmp/imdl
+          wget -O imdl.tar.gz https://github.com/casey/intermodal/releases/download/v0.1.12/imdl-v0.1.12-x86_64-unknown-linux-musl.tar.gz
+          tar xvzf imdl.tar.gz -C /tmp/imdl
+          echo "hello" > hello.txt
+          sha256sum hello.txt
+          imdl torrent create http://172.17.0.1:6969/announce hello.txt
+
       - name: Build kiryuu
         run: cargo build
 
       - name: Run kiryuu (in background)
         run: ./target/debug/kiryuu --redis-host 127.0.0.1:6379 &
+
+      - name: Copy torrent to watch dir
+        run: |
+          cp hello.txt /qbit-svc/downloads
+          cp hello.txt.torrent /qbit-svc/watch
 
       - name: Healthcheck
         run: |
@@ -96,6 +111,12 @@ jobs:
 
       - name: Kill Kiryuu
         run: kill -9 `lsof -i:6969 -t`
+
+      - name: Upload qBittorrent service log
+        uses: actions/upload-artifact@v3
+        with:
+          name: qbit_svc_log.txt
+          path: /qbit-svc/logs/qbittorrent.log   
 
       - name: tcpdump log
         uses: actions/upload-artifact@v3
