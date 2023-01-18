@@ -78,6 +78,9 @@ jobs:
 
       - name: Create file, torrent. Add to qbit-svc
         run: |
+          ifconfig
+          sudo apt-get -y install tcpdump
+          tcpdump --version
           whoami
           sudo chmod -R 777 /qbit-svc
           ls -l /qbit-svc
