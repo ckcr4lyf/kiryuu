@@ -81,7 +81,9 @@ jobs:
           ifconfig
           sudo apt-get -y install tcpdump
           tcpdump --version
-          sudo tcpdump -nnSX port 6969 -i docker0 &>tcpdump_host.log &
+          IF_NAME="$(ifconfig | grep -B1 "172.18.0.1" | head -n1 | awk '{print $1}' | cut -d ':' -f1)"
+          echo $IF_NAME
+          sudo tcpdump -nnSX port 6969 -i $IF_NAME &>tcpdump_host.log &
           whoami
           sudo chmod -R 777 /qbit-svc
           ls -l /qbit-svc
