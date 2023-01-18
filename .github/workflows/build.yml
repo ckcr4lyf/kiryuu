@@ -111,7 +111,7 @@ jobs:
           fi
 
       - name: Docker qbit
-        uses: ckcr4lyf/actions-kiryuu-qbit-test@latest
+        uses: ckcr4lyf/actions-kiryuu-qbit-test@v2
         with:
           torrent_name: hello.txt.torrent
 
