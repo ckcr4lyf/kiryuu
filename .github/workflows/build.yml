@@ -83,7 +83,7 @@ jobs:
           tar xvzf imdl.tar.gz -C /tmp/imdl
           echo "hello" > hello.txt
           sha256sum hello.txt
-          imdl torrent create http://172.17.0.1:6969/announce hello.txt
+          /tmp/imdl/imdl torrent create http://172.17.0.1:6969/announce hello.txt
 
       - name: Build kiryuu
         run: cargo build
