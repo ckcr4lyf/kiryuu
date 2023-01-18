@@ -84,6 +84,7 @@ jobs:
           echo "hello" > hello.txt
           sha256sum hello.txt
           /tmp/imdl/imdl torrent create -a http://172.17.0.1:6969/announce hello.txt
+          cp hello.txt /qbit-svc/downloads
 
       - name: Build kiryuu
         run: cargo build
@@ -92,9 +93,7 @@ jobs:
         run: ./target/debug/kiryuu --redis-host 127.0.0.1:6379 &
 
       - name: Copy torrent to watch dir
-        run: |
-          cp hello.txt /qbit-svc/downloads
-          cp hello.txt.torrent /qbit-svc/watch
+        run: cp hello.txt.torrent /qbit-svc/watch
 
       - name: Healthcheck
         run: |
