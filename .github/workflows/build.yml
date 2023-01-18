@@ -69,7 +69,8 @@ jobs:
         volumes:
           - /qbit-svc/downloads:/downloads
           - /qbit-svc/watch:/watch
-          - /qbit-svc/logs:/root/.local/share/qBittorrent/logs
+          - /qbit-svc/config:/root/.config/qBittorrent
+          - /qbit-svc/local-share:/root/.local/share/qBittorrent
 
     steps:
       # Downloads a copy of the code in your repository before running CI tests
@@ -93,7 +94,7 @@ jobs:
           echo "hello" > hello.txt
           sha256sum hello.txt
           /tmp/imdl/imdl torrent create -a http://172.17.0.1:6969/announce hello.txt
-          cp hello.txt /qbit-svc/downloads
+          cp hello.txt /qbit-svc/downloads/
 
       - name: Build kiryuu
         run: cargo build
@@ -102,7 +103,7 @@ jobs:
         run: ./target/debug/kiryuu --redis-host 127.0.0.1:6379 &
 
       - name: Copy torrent to watch dir
-        run: cp hello.txt.torrent /qbit-svc/watch
+        run: cp hello.txt.torrent /qbit-svc/watch/
 
       - name: Healthcheck
         run: |
@@ -123,8 +124,10 @@ jobs:
       - name: Upload qBittorrent service log
         uses: actions/upload-artifact@v3
         with:
-          name: qbit_svc_log.txt
-          path: /qbit-svc/logs/qbittorrent.log
+          name: qbit_data
+          path: |
+            /qbit-svc/config
+            /qbit-svc/local-share
 
       - name: tcpdump logs
         uses: actions/upload-artifact@v3
