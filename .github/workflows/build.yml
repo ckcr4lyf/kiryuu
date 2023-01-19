@@ -63,9 +63,10 @@ jobs:
           tar xvzf imdl.tar.gz -C /tmp/imdl
 
       - name: Make dummy hello torrent (announce to kiryuu IP)
+        id: make_torrent
         run: |
           echo "hello" > hello.txt
-          sha256sum hello.txt
+          echo "OG_SHA=$(sha256sum hello.txt)" >> $GITHUB_OUTPUT
           /tmp/imdl/imdl torrent create -a http://172.17.0.1:6969/announce hello.txt
 
       - name: Copy text file to seeder qbit instance
@@ -88,12 +89,26 @@ jobs:
           fi
 
       - name: Docker qbit
-        uses: ckcr4lyf/actions-kiryuu-qbit-test@v2.1
+        id: docker_qbit
+        uses: ckcr4lyf/actions-kiryuu-qbit-test@v2.2
         with:
           torrent_name: hello.txt.torrent
 
       - name: Kill Kiryuu
         run: kill -9 `lsof -i:6969 -t`
+
+      - name: Compare hashes
+        env:
+          OG_SHA: ${{ steps.make_torrent.outputs.og_sha }}
+          NEW_SHA: ${{ steps.docker_qbit.outputs.sha }}
+        run: |
+          if [[ $OG_SHA != $NEW_SHA ]]
+            then
+              echo "Fail, OG_SHA=$OG_SHA, but NEW_SHA=$NEW_SHA"
+              exit 1
+            else
+              echo "Success, OG_SHA=$OG_SHA and NEW_SHA=$NEW_SHA"
+          fi          
 
       - name: tcpdump logs
         uses: actions/upload-artifact@v3
