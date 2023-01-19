@@ -69,8 +69,8 @@ jobs:
           echo "OG_SHA=$(sha256sum hello.txt)" >> $GITHUB_OUTPUT
           /tmp/imdl/imdl torrent create -a http://172.17.0.1:6969/announce hello.txt
 
-      - name: Copy text file to seeder qbit instance
-        run: cp hello.txt /qbit-svc/downloads/
+      - name: Move text file to seeder qbit instance
+        run: mv hello.txt /qbit-svc/downloads/
 
       - name: Build kiryuu
         run: cargo build
@@ -88,6 +88,9 @@ jobs:
             else exit 0
           fi
 
+      - name: Do some listing
+        run: ls -la          
+
       - name: Docker qbit
         id: docker_qbit
         uses: ckcr4lyf/actions-kiryuu-qbit-test@v2.2.1
@@ -99,7 +102,7 @@ jobs:
         run: kill -9 `lsof -i:6969 -t`
 
       - name: Do some listing
-        run: ls -l        
+        run: ls -la
 
       - name: Compare hashes
         env:
