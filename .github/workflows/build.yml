@@ -66,7 +66,7 @@ jobs:
         id: make_torrent
         run: |
           echo "hello" > hello.txt
-          echo "OG_SHA=$(sha256sum hello.txt)" >> $GITHUB_OUTPUT
+          echo "OG_SHA=$(sha256sum hello.txt | awk '{print $1}')" >> $GITHUB_OUTPUT
           /tmp/imdl/imdl torrent create -a http://172.17.0.1:6969/announce hello.txt
 
       - name: Move text file to seeder qbit instance
@@ -88,21 +88,15 @@ jobs:
             else exit 0
           fi
 
-      - name: Do some listing
-        run: ls -la          
-
-      - name: Docker qbit
+      - name: Run qbit leecher
         id: docker_qbit
-        uses: ckcr4lyf/actions-kiryuu-qbit-test@v2.2.4
+        uses: ckcr4lyf/actions-kiryuu-qbit-test@v2.2.5
         with:
           torrent_name: hello.txt.torrent
           file_name: hello.txt
 
       - name: Kill Kiryuu
         run: kill -9 `lsof -i:6969 -t`
-
-      - name: Do some listing
-        run: ls -la
 
       - name: Compare hashes
         env:
