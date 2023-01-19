@@ -16,12 +16,19 @@ impl redis::FromRedisValue for Exists {
 }
 
 fn main(){
+    let mut r_client = redis::Client::open("redis://127.0.0.1:6379").unwrap();
 
-    let mut rClient = redis::Client::open("redis://127.0.0.1:6379").unwrap();
+    // We work with a custom enum which implements FromRedisValue
+    let exist_highlevel = match r_client.zscore::<_, _, Exists>("thezset", "KEY2").unwrap() {
+        Exists::No => false,
+        Exists::Yes => true,
+    };
 
-    // let theZscore: f64 = rClient.zscore("thezset", "KEY1").unwrap();
-    let theZscore: Exists = rClient.zscore("thezset", "KEY2").unwrap();
+    // We work with lower level value, since we only need to detect nil or non-nil. This can save us from type checking (I think?)
+    let exist_lowlevel = match r_client.zscore::<_, _, redis::Value>("thezset", "KEY2").unwrap() {
+        redis::Value::Nil => false,
+        _ => true,
+    };
 
-
-    println!("the zscore is {:?}", theZscore)
+    println!("exist_highlevel is {:?}, exist_lowlevel is {:?}", exist_highlevel, exist_lowlevel)
 }
