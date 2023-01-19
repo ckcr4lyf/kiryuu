@@ -90,13 +90,16 @@ jobs:
 
       - name: Docker qbit
         id: docker_qbit
-        uses: ckcr4lyf/actions-kiryuu-qbit-test@v2.2
+        uses: ckcr4lyf/actions-kiryuu-qbit-test@v2.2.1
         with:
           torrent_name: hello.txt.torrent
           file_name: hello.txt
 
       - name: Kill Kiryuu
         run: kill -9 `lsof -i:6969 -t`
+
+      - name: Do some listing
+        run: ls -l        
 
       - name: Compare hashes
         env:
