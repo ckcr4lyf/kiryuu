@@ -93,7 +93,7 @@ jobs:
 
       - name: Docker qbit
         id: docker_qbit
-        uses: ckcr4lyf/actions-kiryuu-qbit-test@v2.2.3
+        uses: ckcr4lyf/actions-kiryuu-qbit-test@v2.2.4
         with:
           torrent_name: hello.txt.torrent
           file_name: hello.txt
