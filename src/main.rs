@@ -75,7 +75,11 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     // 
     // potentially a better solution would be to ZCARD the ZSET (number of elements) , and if it is > N , then lookup a cache instead
     // i.e. a normal SET , all members. We could "set" this cache if ZRANK > N with a 0.01% probability (1/10000) , or more likely depndent on N
-    // so we are caching the ZSET in a normal 
+    // so we are caching the ZSET in a normal
+    
+    // alternatively, we could cache the "response" (i.e. bencoded list of peers) as a single redis key
+    // this is beneficial since with a set, SMEMBERS is still O(N) , but a normal key-val is O(1) , and we would
+    // be repeating ourselves anyway.
     let (seeders, mut leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = redis::pipe()
     .cmd("ZRANGEBYSCORE").arg(&seeders_key).arg(max_limit).arg(time_now_ms)
     .cmd("ZRANGEBYSCORE").arg(&leechers_key).arg(max_limit).arg(time_now_ms)
