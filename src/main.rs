@@ -68,6 +68,14 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     let seeders_key = parsed.info_hash.clone() + "_seeders";
     let leechers_key = parsed.info_hash.clone() + "_leechers";
 
+    // We will change this to use ZSCORE (is_seeder, is_leecher) & ZRANGE w/ LIMIT N for (seeders, leechers)
+    // ZRANGE is still O(log(N)) , it would only reduce:
+    // - network traffic b/w redis & kiryuu
+    // - random shuffle CPU cost in kiryuu
+    // 
+    // potentially a better solution would be to ZCARD the ZSET (number of elements) , and if it is > N , then lookup a cache instead
+    // i.e. a normal SET , all members. We could "set" this cache if ZRANK > N with a 0.01% probability (1/10000) , or more likely depndent on N
+    // so we are caching the ZSET in a normal 
     let (seeders, mut leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = redis::pipe()
     .cmd("ZRANGEBYSCORE").arg(&seeders_key).arg(max_limit).arg(time_now_ms)
     .cmd("ZRANGEBYSCORE").arg(&leechers_key).arg(max_limit).arg(time_now_ms)
