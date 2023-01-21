@@ -5,8 +5,5 @@ on:
 name: Master - Build, Unit Test, Integration test
 
 jobs:
-  build:
-    uses: ./.github/workflows/build.yml
-
   integration-tests:
-    uses: ./.github/workflows/integration-test.yml
+    uses: ./.github/workflows/integration_test.yml
