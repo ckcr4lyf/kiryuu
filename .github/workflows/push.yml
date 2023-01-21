@@ -1,0 +1,9 @@
+on:
+  push:
+    branches-ignore: ['master']
+
+name: Push - Build, Unit Test
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
