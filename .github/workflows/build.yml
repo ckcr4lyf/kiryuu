@@ -1,4 +1,7 @@
-on: [push]
+on:
+  push:
+    branches-ignore: ['master']
+  workflow_call:    
 
 name: Push - Build, Unit Test
 
