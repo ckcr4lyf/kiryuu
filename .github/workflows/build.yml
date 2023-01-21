@@ -88,6 +88,11 @@ jobs:
             else exit 0
           fi
 
+      - name: Gauge
+        uses: docker://ghcr.io/ckcr4lyf/kiryuu-gauge@sha256:a475ae69cfa9b2233761ec0e5d80a51f600366f446e6fef1e2e7a9b6d33a808c
+        env:
+          KIRYUU_HOST: http://172.17.0.1:6969
+
       - name: Run qbit leecher
         id: docker_qbit
         uses: ckcr4lyf/actions-kiryuu-qbit-test@v2.2.5
