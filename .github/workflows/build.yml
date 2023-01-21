@@ -1,6 +1,4 @@
-on:
-  push:
-    branches-ignore: ['master']
+on: [push]
 
 name: Push - Build, Unit Test
 
