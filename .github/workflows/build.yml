@@ -89,7 +89,7 @@ jobs:
           fi
 
       - name: Gauge
-        uses: ghcr.io/ckcr4lyf/kiryuu_gauge@sha256:8c49697c8ed62bed7c1c40f0fa5a7dd7edc3631801e392fc570cfc45895aa73e
+        uses: docker://ghcr.io/ckcr4lyf/kiryuu_gauge@sha256:8c49697c8ed62bed7c1c40f0fa5a7dd7edc3631801e392fc570cfc45895aa73e
         env:
           KIRYUU_HOST: http://172.17.0.1
 
