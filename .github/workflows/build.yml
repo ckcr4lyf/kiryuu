@@ -3,7 +3,7 @@ on: [push, pull_request]
 name: Build & Test
 
 jobs:
-  check:
+  build:
     name: Build & Test
     runs-on: ubuntu-latest
     steps:
@@ -16,8 +16,14 @@ jobs:
       - name: Test
         run: cargo test --verbose
 
-  redis-test:
-    name: Test with redis-test
+      - uses: actions/upload-artifact@v3
+        with:
+          name: kiryuu
+          path: ./target/debug/kiryuu
+
+  test-qbit:
+    name: Test with actual qbittorrent
+    needs: build
     runs-on: ubuntu-latest
 
     services:
@@ -44,9 +50,12 @@ jobs:
           - /qbit-svc/watch:/watch
 
     steps:
-      # Downloads a copy of the code in your repository before running CI tests
-      - name: Check out repository code
-        uses: actions/checkout@v3
+      - uses: actions/download-artifact@v3
+        with:
+          name: kiryuu
+
+      - name: Run kiryuu (in background)
+        run: ./kiryuu --redis-host 127.0.0.1:6379 &          
 
       - name: chmod the qbit seeder volumes
         run: sudo chmod -R 777 /qbit-svc
@@ -72,12 +81,6 @@ jobs:
       - name: Move text file to seeder qbit instance
         run: mv hello.txt /qbit-svc/downloads/
 
-      - name: Build kiryuu
-        run: cargo build
-
-      - name: Run kiryuu (in background)
-        run: ./target/debug/kiryuu --redis-host 127.0.0.1:6379 &
-
       - name: Copy torrent to watch dir
         run: cp hello.txt.torrent /qbit-svc/watch/
 
@@ -87,11 +90,6 @@ jobs:
             then exit 1
             else exit 0
           fi
-
-      - name: Gauge
-        uses: docker://ghcr.io/ckcr4lyf/kiryuu-gauge@sha256:a475ae69cfa9b2233761ec0e5d80a51f600366f446e6fef1e2e7a9b6d33a808c
-        env:
-          KIRYUU_HOST: http://172.17.0.1:6969
 
       - name: Run qbit leecher
         id: docker_qbit
@@ -116,10 +114,42 @@ jobs:
               echo "Success, OG_SHA=$OG_SHA and NEW_SHA=$NEW_SHA"
           fi          
 
-      - name: tcpdump logs
+      - name: Upload tcpdump logs
         uses: actions/upload-artifact@v3
         with:
           name: tcpdump_logs
           path: |
             ./tcpdump.log
             ./tcpdump_host.log
+
+  test-gauge:
+    name: Run tests with gauge
+    needs: build
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis
+
+        ports:
+          - 6379:6379
+
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/download-artifact@v3
+        with:
+          name: kiryuu
+
+      - name: Run kiryuu (in background)
+        run: ./kiryuu --redis-host 127.0.0.1:6379 &
+
+      - name: Execute Gauge
+        uses: docker://ghcr.io/ckcr4lyf/kiryuu-gauge@sha256:a475ae69cfa9b2233761ec0e5d80a51f600366f446e6fef1e2e7a9b6d33a808c
+        env:
+          KIRYUU_HOST: http://172.17.0.1:6969
+
