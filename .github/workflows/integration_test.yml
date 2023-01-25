@@ -141,4 +141,4 @@ jobs:
         uses: docker://ghcr.io/ckcr4lyf/kiryuu-gauge@sha256:569f97a81cc3fab23eccf2a548fab037b6735c40e1594946f72ea2ae4da21f12
         env:
           KIRYUU_HOST: http://172.17.0.1:6969
-          REDIS_HOST: http://172.17.0.1:6379
+          REDIS_HOST: redis://172.17.0.1:6379
