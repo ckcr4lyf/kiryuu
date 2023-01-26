@@ -138,6 +138,7 @@ jobs:
           ./kiryuu --redis-host 127.0.0.1:6379 &
 
       - name: Execute Gauge
-        uses: docker://ghcr.io/ckcr4lyf/kiryuu-gauge@sha256:a475ae69cfa9b2233761ec0e5d80a51f600366f446e6fef1e2e7a9b6d33a808c
+        uses: docker://ghcr.io/ckcr4lyf/kiryuu-gauge@sha256:3ec533d2db31ad143668380ed1c67203d4b38d37f582b5938e32f49d480c346c
         env:
           KIRYUU_HOST: http://172.17.0.1:6969
+          REDIS_HOST: redis://172.17.0.1:6379
