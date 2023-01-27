@@ -1,0 +1,9 @@
+on:
+  push:
+    branches: ['master']
+
+name: Master - Build, Unit Test, Integration test
+
+jobs:
+  integration-tests:
+    uses: ./.github/workflows/integration_test.yml
