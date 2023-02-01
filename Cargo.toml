@@ -18,3 +18,7 @@ clap = { version = "4.0.30", features = ["derive"] }
 [[example]]
 name = "redis_zscore"
 path = "examples/redis_zscore.rs"
+
+[[example]]
+name = "redis_zset"
+path = "examples/redis_zset.rs"
