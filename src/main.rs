@@ -29,6 +29,21 @@ struct Args {
 // So dont waste bandwidth on redis query etc.
 const THIRTY_ONE_MINUTES: i64 = 60 * 31 * 1000;
 
+#[derive(Debug)]
+enum Exists {
+    Yes,
+    No,
+}
+
+impl redis::FromRedisValue for Exists {
+    fn from_redis_value(v: &redis::Value) -> redis::RedisResult<Exists> {
+        match *v {
+            redis::Value::Nil => Ok(Exists::No),
+            _ => Ok(Exists::Yes),
+        }
+    }
+}
+
 #[get("/announce")]
 async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {    
    
@@ -81,6 +96,15 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     // alternatively, we could cache the "response" (i.e. bencoded list of peers) as a single redis key
     // this is beneficial since with a set, SMEMBERS is still O(N) , but a normal key-val is O(1) , and we would
     // be repeating ourselves anyway.
+
+    let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = redis::pipe()
+        .cmd("ZSCORE").arg(&seeders_key).arg(&parsed.ip_port)
+        .cmd("ZSCORE").arg(&leechers_key).arg(&parsed.ip_port)
+        .cmd("GET").arg(&cache_key)
+        .query_async(&mut rc).await.unwrap();
+
+    println!("Is seeder: {:?}\nIs leecher: {:?}\nCache Reply: {:?}", is_seeder_v2, is_leecher_v2, cached_reply);
+        
 
     let (seeders, mut leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = redis::pipe()
     .cmd("ZRANGEBYSCORE").arg(&seeders_key).arg(max_limit).arg(time_now_ms)
@@ -161,6 +185,10 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 
         // We also need to prepare a fresh body (instead of using cache):
         refresh_flag = true;
+    }
+
+    if refresh_flag == true {
+        // We need to call ZRANGE twice and then use that to prepare the body.
     }
 
 

@@ -30,5 +30,8 @@ fn main(){
         _ => true,
     };
 
-    println!("exist_highlevel is {:?}, exist_lowlevel is {:?}", exist_highlevel, exist_lowlevel)
+    println!("exist_highlevel is {:?}, exist_lowlevel is {:?}", exist_highlevel, exist_lowlevel);
+    
+    // let exist_bool: bool = r_client.zscore("thezset", "KEY2").unwrap();
+    // println!("bool coerced is {:?}", exist_bool);
 }
