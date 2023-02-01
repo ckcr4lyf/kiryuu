@@ -104,24 +104,6 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         .query_async(&mut rc).await.unwrap();
 
     println!("Is seeder: {:?}\nIs leecher: {:?}\nCache Reply: {:?}", is_seeder_v2, is_leecher_v2, cached_reply);
-        
-
-    let (seeders, mut leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = redis::pipe()
-    .cmd("ZRANGEBYSCORE").arg(&seeders_key).arg(max_limit).arg(time_now_ms)
-    .cmd("ZRANGEBYSCORE").arg(&leechers_key).arg(max_limit).arg(time_now_ms)
-    .query_async(&mut rc).await.unwrap();
-
-    let is_seeder = seeders.contains(&parsed.ip_port);
-
-    let is_leecher = match is_seeder {
-        true => false, // If it's a seeder, leecher must be false
-        false => leechers.contains(&parsed.ip_port), // otherwise we will search the leecher vector as well
-    };
-
-    // Don't shuffle the seeders, for leechers shuffle so that the older ones also get a shot
-    // e.g. if there are 1000 leechers, the one whom announced 29 minutes ago also has a fair
-    // change of being announced to a peer, to help swarm
-    leechers.shuffle(&mut thread_rng());
 
     let mut post_announce_pipeline = redis::pipe();
     post_announce_pipeline.cmd("ZADD").arg(constants::TORRENTS_KEY).arg(time_now_ms).arg(&parsed.info_hash).ignore(); // To "update" the torrent
@@ -138,17 +120,17 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     // let bg_rc = data.redis_connection.clone();
 
     if event == "stopped" {
-        if is_seeder {
+        if let Exists::Yes = is_seeder_v2 {
             seed_count_mod -= 1;
             post_announce_pipeline.cmd("ZREM").arg(&seeders_key).arg(&parsed.ip_port).ignore(); // We dont care about the return value
-        } else if is_leecher {
+        } else if let Exists::Yes = is_leecher_v2 {
             leech_count_mod -= 1;
             post_announce_pipeline.cmd("ZREM").arg(&leechers_key).arg(&parsed.ip_port).ignore(); // We dont care about the return value
         }
     } else if parsed.is_seeding {
 
         // New seeder
-        if is_seeder == false {
+        if let Exists::No = is_seeder_v2 {
             post_announce_pipeline.cmd("ZADD").arg(&seeders_key).arg(time_now_ms).arg(&parsed.ip_port).ignore();
             seed_count_mod += 1
         }
@@ -156,7 +138,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         // They just completed
         if event == "completed" {
             // If they were previously leecher, remove from that pool
-            if is_leecher {
+            if let Exists::Yes = is_leecher_v2 {
                 post_announce_pipeline.cmd("ZREM").arg(&leechers_key).arg(&parsed.ip_port).ignore();
                 leech_count_mod -= 1
             }
@@ -164,7 +146,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             // Increment the downloaded count for the infohash stats
             post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("downloaded").arg(1u32).ignore();
         }
-    } else if is_leecher == false {
+    } else if let Exists::No = is_leecher_v2 {
             post_announce_pipeline.cmd("ZADD").arg(&leechers_key).arg(time_now_ms).arg(&parsed.ip_port).ignore();
             leech_count_mod += 1
     };
