@@ -67,6 +67,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 
     let seeders_key = parsed.info_hash.clone() + "_seeders";
     let leechers_key = parsed.info_hash.clone() + "_leechers";
+    let cache_key = parsed.info_hash.clone() + "_cache";
 
     // We will change this to use ZSCORE (is_seeder, is_leecher) & ZRANGE w/ LIMIT N for (seeders, leechers)
     // ZRANGE is still O(log(N)) , it would only reduce:
@@ -80,6 +81,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     // alternatively, we could cache the "response" (i.e. bencoded list of peers) as a single redis key
     // this is beneficial since with a set, SMEMBERS is still O(N) , but a normal key-val is O(1) , and we would
     // be repeating ourselves anyway.
+
     let (seeders, mut leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = redis::pipe()
     .cmd("ZRANGEBYSCORE").arg(&seeders_key).arg(max_limit).arg(time_now_ms)
     .cmd("ZRANGEBYSCORE").arg(&leechers_key).arg(max_limit).arg(time_now_ms)
@@ -178,6 +180,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 
     post_announce_pipeline.cmd("INCR").arg(constants::ANNOUNCE_COUNT_KEY).ignore();
     post_announce_pipeline.cmd("INCRBY").arg(constants::REQ_DURATION_KEY).arg(req_duration).ignore();
+    post_announce_pipeline.cmd("SET").arg(cache_key).arg(&bruvva_res).arg("EX").arg(60 * 15).ignore();
 
     actix_web::rt::spawn(async move {
         // 0.1% chance to trigger a clean, 
