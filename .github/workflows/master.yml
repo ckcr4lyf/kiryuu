@@ -7,3 +7,25 @@ name: Master - Build, Unit Test, Integration test
 jobs:
   integration-tests:
     uses: ./.github/workflows/integration_test.yml
+
+  build-static:
+    name: Build Static
+    needs: integration-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
+
+      - name: Add musl target
+        run: rustup target add x86_64-unknown-linux-musl
+
+      - name: Build static binary
+        run: cargo build --target=x86_64-unknown-linux-musl --release
+
+      - name: Check linkage
+        run: ldd ./target/x86_64-unknown-linux-musl/release/kiryuu
+      
+      - uses: actions/upload-artifact@v3
+        with:
+          name: kiryuu-static-${{ github.sha }}
+          path: ./target/x86_64-unknown-linux-musl/release/kiryuu
