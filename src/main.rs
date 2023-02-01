@@ -35,6 +35,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     let time_now = SystemTime::now().duration_since(UNIX_EPOCH).expect("fucked up");
     let time_now_ms: i64 = i64::try_from(time_now.as_millis()).expect("fucc");
     let max_limit = time_now_ms - THIRTY_ONE_MINUTES;
+    let mut refresh_flag = false; // Whether we need to issue new ZRANGE query commands and update the cache
 
     let query = req.query_string();
     let conn_info = req.connection_info();
@@ -64,7 +65,6 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 
     // Get seeders & leechers
     let mut rc = data.redis_connection.clone();
-
     let seeders_key = parsed.info_hash.clone() + "_seeders";
     let leechers_key = parsed.info_hash.clone() + "_leechers";
     let cache_key = parsed.info_hash.clone() + "_cache";
@@ -145,14 +145,27 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             leech_count_mod += 1
     };
 
-    // Update seeder & leecher count, if required
-    if seed_count_mod != 0 {
-        post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("seeders").arg(seed_count_mod).ignore();
+    // If neither seeder count changed, neither leech count
+    // In future, we will use this to determine if we need to update the cache or not
+    if seed_count_mod == 0 && leech_count_mod == 0 {
+        post_announce_pipeline.cmd("INCR").arg(constants::NOCHANGE_ANNOUNCE_COUNT_KEY).ignore();
+    } else {
+        // Something changed, so we should update seeders / leechers:
+        if seed_count_mod != 0 {
+            post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("seeders").arg(seed_count_mod).ignore();
+        }
+
+        if leech_count_mod != 0 {
+            post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("leechers").arg(leech_count_mod).ignore();
+        }
+
+        // We also need to prepare a fresh body (instead of using cache):
+        refresh_flag = true;
     }
 
-    if leech_count_mod != 0 {
-        post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("leechers").arg(leech_count_mod).ignore();
-    }
+
+
+
 
     // endex = end index XD. seems in rust cannot select first 50 elements, or limit to less if vector doesnt have 50
     // e.g. &seeders[0..50] is panicking when seeders len is < 50. Oh well.
@@ -182,20 +195,8 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     post_announce_pipeline.cmd("INCRBY").arg(constants::REQ_DURATION_KEY).arg(req_duration).ignore();
     post_announce_pipeline.cmd("SET").arg(cache_key).arg(&bruvva_res).arg("EX").arg(60 * 15).ignore();
 
-    // If neither seeder count changed, neither leech count
-    // In future, we will use this to determine if we need to update the cache or not
-    if seed_count_mod == 0 && leech_count_mod == 0 {
-        post_announce_pipeline.cmd("INCR").arg(constants::NOCHANGE_ANNOUNCE_COUNT_KEY).ignore();
-    }
 
     actix_web::rt::spawn(async move {
-        // 0.1% chance to trigger a clean, 
-        let chance = rand::thread_rng().gen_range(0..1000);
-        if chance == 0 {
-            post_announce_pipeline.cmd("ZREMRANGEBYSCORE").arg(&seeders_key).arg(0).arg(max_limit).ignore();
-            post_announce_pipeline.cmd("ZREMRANGEBYSCORE").arg(&leechers_key).arg(0).arg(max_limit).ignore();
-        }
-
         // log the summary
         post_announce_pipeline.cmd("PUBLISH").arg("reqlog").arg(req_log::generate_csv(&user_ip_owned, &parsed.info_hash)).ignore();
 
