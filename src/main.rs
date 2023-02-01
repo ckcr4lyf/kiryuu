@@ -105,6 +105,11 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 
     println!("Is seeder: {:?}\nIs leecher: {:?}\nCache Reply: {:?}", is_seeder_v2, is_leecher_v2, cached_reply);
 
+    if cached_reply.len() == 0 {
+        println!("Cache miss, will set flag");
+        refresh_flag = true;
+    }
+
     let mut post_announce_pipeline = redis::pipe();
     post_announce_pipeline.cmd("ZADD").arg(constants::TORRENTS_KEY).arg(time_now_ms).arg(&parsed.info_hash).ignore(); // To "update" the torrent
 
@@ -151,7 +156,6 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             leech_count_mod += 1
     };
 
-    // If neither seeder count changed, neither leech count
     // In future, we will use this to determine if we need to update the cache or not
     if seed_count_mod == 0 && leech_count_mod == 0 {
         post_announce_pipeline.cmd("INCR").arg(constants::NOCHANGE_ANNOUNCE_COUNT_KEY).ignore();
@@ -169,32 +173,50 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         refresh_flag = true;
     }
 
-    if refresh_flag == true {
-        // We need to call ZRANGE twice and then use that to prepare the body.
-    }
+    let final_res = match refresh_flag {
+        true => {
+            // We need to call ZRANGE twice and then use that to prepare the body.
+            println!("refresh flag is true, will do zrange stuffs...");
+            let (mut seeders, mut leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = redis::pipe()
+            .cmd("ZRANGEBYSCORE").arg(&seeders_key).arg(max_limit).arg(time_now_ms)
+            .cmd("ZRANGEBYSCORE").arg(&leechers_key).arg(max_limit).arg(time_now_ms)
+            .query_async(&mut rc).await.unwrap();
+        
+            // endex = end index XD. seems in rust cannot select first 50 elements, or limit to less if vector doesnt have 50
+            // e.g. &seeders[0..50] is panicking when seeders len is < 50. Oh well.
+            let seeder_endex = if seeders.len() >= 50 {
+                50
+            } else {
+                seeders.len()
+            };
+        
+            let leecher_endex = if leechers.len() >= 50 {
+                50
+            } else {
+                leechers.len()
+            };
+        
+            let scount: i64 = seeders.len().try_into().expect("fucky wucky");
+            let lcount: i64 = leechers.len().try_into().expect("fucky wucky");
 
+            // TBD: How do we add new guy in, and also in cache (endex problem...)
+            // if seed_count_mod > 0 {
+            //     seeders.push(parsed.ip_port.to_owned());
+            // }
 
+            // if leech_count_mod > 0 {
+            //     leechers.push(parsed.ip_port.to_owned());
+            // }
 
-
-
-    // endex = end index XD. seems in rust cannot select first 50 elements, or limit to less if vector doesnt have 50
-    // e.g. &seeders[0..50] is panicking when seeders len is < 50. Oh well.
-    let seeder_endex = if seeders.len() >= 50 {
-        50
-    } else {
-        seeders.len()
+            let temp_reply = query::announce_reply(scount + seed_count_mod, lcount + leech_count_mod, &seeders[0..seeder_endex], &leechers[0..leecher_endex]);
+            post_announce_pipeline.cmd("SET").arg(cache_key).arg(&temp_reply).arg("EX").arg(60 * 15).ignore();
+            temp_reply
+        },
+        false => {
+            cached_reply
+        }
     };
 
-    let leecher_endex = if leechers.len() >= 50 {
-        50
-    } else {
-        leechers.len()
-    };
-
-    let scount: i64 = seeders.len().try_into().expect("fucky wucky");
-    let lcount: i64 = leechers.len().try_into().expect("fucky wucky");
-
-    let bruvva_res = query::announce_reply(scount + seed_count_mod, lcount + leech_count_mod, &seeders[0..seeder_endex], &leechers[0..leecher_endex]);
 
     let time_end = SystemTime::now().duration_since(UNIX_EPOCH).expect("fucked up");
     let time_end_ms: i64 = i64::try_from(time_end.as_millis()).expect("fucc");
@@ -203,7 +225,6 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 
     post_announce_pipeline.cmd("INCR").arg(constants::ANNOUNCE_COUNT_KEY).ignore();
     post_announce_pipeline.cmd("INCRBY").arg(constants::REQ_DURATION_KEY).arg(req_duration).ignore();
-    post_announce_pipeline.cmd("SET").arg(cache_key).arg(&bruvva_res).arg("EX").arg(60 * 15).ignore();
 
 
     actix_web::rt::spawn(async move {
@@ -220,7 +241,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         };
     });
 
-    return HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body(bruvva_res);
+    return HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body(final_res);
 }
 
 #[get("/healthz")]
