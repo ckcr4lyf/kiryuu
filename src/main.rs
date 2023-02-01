@@ -167,6 +167,12 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     post_announce_pipeline.cmd("INCR").arg(constants::ANNOUNCE_COUNT_KEY).ignore();
     post_announce_pipeline.cmd("INCRBY").arg(constants::REQ_DURATION_KEY).arg(req_duration).ignore();
 
+    // If neither seeder count changed, neither leech count
+    // In future, we will use this to determine if we need to update the cache or not
+    if seed_count_mod == 0 && leech_count_mod == 0 {
+        post_announce_pipeline.cmd("INCR").arg(constants::NOCHANGE_ANNOUNCE_COUNT_KEY).ignore();
+    }
+
     actix_web::rt::spawn(async move {
         // 0.1% chance to trigger a clean, 
         let chance = rand::thread_rng().gen_range(0..1000);
