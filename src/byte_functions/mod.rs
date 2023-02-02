@@ -50,9 +50,14 @@ pub fn xd(x: &str) -> String {
                 // This byte is the actual info hash byte
                 // We need its text version
                 // e.g. A => 0x41 => "41" => [0x34, 0x31]
-                let temp = to_hex_op_v0(&non_pc);
-                hex_str_bytes[pos_hex_str] = temp[0];
-                hex_str_bytes[pos_hex_str+1] = temp[1];
+                // Get high 4 bits (i,e 0x4_)
+                let left = (0b11110000 & non_pc) >> 4;
+
+                // Get low 4 bits (i,e 0x_1)
+                let right = 0b00001111 & non_pc;
+
+                hex_str_bytes[pos_hex_str] = HEX_CHAR_MAP[left as usize];
+                hex_str_bytes[pos_hex_str+1] = HEX_CHAR_MAP[right as usize];
                 pos_hex_str += 2;
                 pos_x += 1;
             }
