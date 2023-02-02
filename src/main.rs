@@ -4,7 +4,6 @@ mod constants;
 mod req_log;
 
 use actix_web::{get, App, HttpServer, web, HttpRequest, HttpResponse, http::header, http::StatusCode};
-use rand::{thread_rng, prelude::SliceRandom, Rng};
 use std::time::{SystemTime, UNIX_EPOCH};
 use clap::Parser;
 
@@ -28,6 +27,21 @@ struct Args {
 // If not more than 31, possible not online
 // So dont waste bandwidth on redis query etc.
 const THIRTY_ONE_MINUTES: i64 = 60 * 31 * 1000;
+
+#[derive(Debug)]
+enum Exists {
+    Yes,
+    No,
+}
+
+impl redis::FromRedisValue for Exists {
+    fn from_redis_value(v: &redis::Value) -> redis::RedisResult<Exists> {
+        match *v {
+            redis::Value::Nil => Ok(Exists::No),
+            _ => Ok(Exists::Yes),
+        }
+    }
+}
 
 #[get("/announce")]
 async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {    
@@ -64,26 +78,15 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 
     // Get seeders & leechers
     let mut rc = data.redis_connection.clone();
-
     let seeders_key = parsed.info_hash.clone() + "_seeders";
     let leechers_key = parsed.info_hash.clone() + "_leechers";
+    let cache_key = parsed.info_hash.clone() + "_cache";
 
-    let (seeders, mut leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = redis::pipe()
-    .cmd("ZRANGEBYSCORE").arg(&seeders_key).arg(max_limit).arg(time_now_ms)
-    .cmd("ZRANGEBYSCORE").arg(&leechers_key).arg(max_limit).arg(time_now_ms)
-    .query_async(&mut rc).await.unwrap();
-
-    let is_seeder = seeders.contains(&parsed.ip_port);
-
-    let is_leecher = match is_seeder {
-        true => false, // If it's a seeder, leecher must be false
-        false => leechers.contains(&parsed.ip_port), // otherwise we will search the leecher vector as well
-    };
-
-    // Don't shuffle the seeders, for leechers shuffle so that the older ones also get a shot
-    // e.g. if there are 1000 leechers, the one whom announced 29 minutes ago also has a fair
-    // change of being announced to a peer, to help swarm
-    leechers.shuffle(&mut thread_rng());
+    let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = redis::pipe()
+        .cmd("ZSCORE").arg(&seeders_key).arg(&parsed.ip_port)
+        .cmd("ZSCORE").arg(&leechers_key).arg(&parsed.ip_port)
+        .cmd("GET").arg(&cache_key)
+        .query_async(&mut rc).await.unwrap();
 
     let mut post_announce_pipeline = redis::pipe();
     post_announce_pipeline.cmd("ZADD").arg(constants::TORRENTS_KEY).arg(time_now_ms).arg(&parsed.info_hash).ignore(); // To "update" the torrent
@@ -97,28 +100,26 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         None => "unknown",
     };
 
-    // let bg_rc = data.redis_connection.clone();
-
     if event == "stopped" {
-        if is_seeder {
+        if let Exists::Yes = is_seeder_v2 {
             seed_count_mod -= 1;
             post_announce_pipeline.cmd("ZREM").arg(&seeders_key).arg(&parsed.ip_port).ignore(); // We dont care about the return value
-        } else if is_leecher {
+        } else if let Exists::Yes = is_leecher_v2 {
             leech_count_mod -= 1;
             post_announce_pipeline.cmd("ZREM").arg(&leechers_key).arg(&parsed.ip_port).ignore(); // We dont care about the return value
         }
     } else if parsed.is_seeding {
 
         // New seeder
-        if is_seeder == false {
+        if let Exists::No = is_seeder_v2 {
             post_announce_pipeline.cmd("ZADD").arg(&seeders_key).arg(time_now_ms).arg(&parsed.ip_port).ignore();
-            seed_count_mod += 1
+            seed_count_mod += 1;
         }
 
         // They just completed
         if event == "completed" {
             // If they were previously leecher, remove from that pool
-            if is_leecher {
+            if let Exists::Yes = is_leecher_v2 {
                 post_announce_pipeline.cmd("ZREM").arg(&leechers_key).arg(&parsed.ip_port).ignore();
                 leech_count_mod -= 1
             }
@@ -126,38 +127,61 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             // Increment the downloaded count for the infohash stats
             post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("downloaded").arg(1u32).ignore();
         }
-    } else if is_leecher == false {
+    } else if let Exists::No = is_leecher_v2 {
             post_announce_pipeline.cmd("ZADD").arg(&leechers_key).arg(time_now_ms).arg(&parsed.ip_port).ignore();
-            leech_count_mod += 1
+            leech_count_mod += 1;
     };
 
-    // Update seeder & leecher count, if required
-    if seed_count_mod != 0 {
-        post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("seeders").arg(seed_count_mod).ignore();
+    // Cache miss = query redis
+    // no change = update cache
+    // change = clear cache
+
+    let final_res = match cached_reply.len() {
+        0 => {
+            // Cache miss. Lookup from redis
+            let (seeders, leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = redis::pipe()
+            .cmd("ZRANGEBYSCORE").arg(&seeders_key).arg(max_limit).arg(time_now_ms)
+            .cmd("ZRANGEBYSCORE").arg(&leechers_key).arg(max_limit).arg(time_now_ms)
+            .query_async(&mut rc).await.unwrap();
+        
+            // endex = end index XD. seems in rust cannot select first 50 elements, or limit to less if vector doesnt have 50
+            // e.g. &seeders[0..50] is panicking when seeders len is < 50. Oh well.
+            let seeder_endex = std::cmp::min(seeders.len(), 50);
+            let leecher_endex = std::cmp::min(leechers.len(), 50);
+
+            query::announce_reply(seeders.len() as i64 + seed_count_mod, leechers.len() as i64 + leech_count_mod, &seeders[0..seeder_endex], &leechers[0..leecher_endex])
+        },
+        _ => {
+            post_announce_pipeline.cmd("INCR").arg(constants::CACHE_HIT_ANNOUNCE_COUNT_KEY).ignore();
+            cached_reply
+        }
+    };
+
+    // Is there a change in seeders / leechers
+    if seed_count_mod != 0 || leech_count_mod != 0 {
+        // TBD: Maybe we can issue the HINCRBY anyway, it is:
+        // Pipelined
+        // In background (not .awaited for announce reply)
+        // O(1) in redis
+        // Can clean up this branching crap
+        if seed_count_mod != 0 {
+            post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("seeders").arg(seed_count_mod).ignore();
+        }
+
+        if leech_count_mod != 0 {
+            post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("leechers").arg(leech_count_mod).ignore();
+        }
+
+        // TODO: Patch cached reply with the count mods?
+        // Also invalidate existing cache
+        post_announce_pipeline.cmd("DEL").arg(&cache_key).ignore();
+    } else {
+        post_announce_pipeline.cmd("INCR").arg(constants::NOCHANGE_ANNOUNCE_COUNT_KEY).ignore();
+        // TBD: If we had a cache hit, any point to set it again? 
+        // For now we are ok, since background pipeline, O(1) in redis.
+        post_announce_pipeline.cmd("SET").arg(&cache_key).arg(&final_res).arg("EX").arg(60 * 30).ignore();
     }
 
-    if leech_count_mod != 0 {
-        post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("leechers").arg(leech_count_mod).ignore();
-    }
-
-    // endex = end index XD. seems in rust cannot select first 50 elements, or limit to less if vector doesnt have 50
-    // e.g. &seeders[0..50] is panicking when seeders len is < 50. Oh well.
-    let seeder_endex = if seeders.len() >= 50 {
-        50
-    } else {
-        seeders.len()
-    };
-
-    let leecher_endex = if leechers.len() >= 50 {
-        50
-    } else {
-        leechers.len()
-    };
-
-    let scount: i64 = seeders.len().try_into().expect("fucky wucky");
-    let lcount: i64 = leechers.len().try_into().expect("fucky wucky");
-
-    let bruvva_res = query::announce_reply(scount + seed_count_mod, lcount + leech_count_mod, &seeders[0..seeder_endex], &leechers[0..leecher_endex]);
 
     let time_end = SystemTime::now().duration_since(UNIX_EPOCH).expect("fucked up");
     let time_end_ms: i64 = i64::try_from(time_end.as_millis()).expect("fucc");
@@ -167,20 +191,8 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     post_announce_pipeline.cmd("INCR").arg(constants::ANNOUNCE_COUNT_KEY).ignore();
     post_announce_pipeline.cmd("INCRBY").arg(constants::REQ_DURATION_KEY).arg(req_duration).ignore();
 
-    // If neither seeder count changed, neither leech count
-    // In future, we will use this to determine if we need to update the cache or not
-    if seed_count_mod == 0 && leech_count_mod == 0 {
-        post_announce_pipeline.cmd("INCR").arg(constants::NOCHANGE_ANNOUNCE_COUNT_KEY).ignore();
-    }
 
     actix_web::rt::spawn(async move {
-        // 0.1% chance to trigger a clean, 
-        let chance = rand::thread_rng().gen_range(0..1000);
-        if chance == 0 {
-            post_announce_pipeline.cmd("ZREMRANGEBYSCORE").arg(&seeders_key).arg(0).arg(max_limit).ignore();
-            post_announce_pipeline.cmd("ZREMRANGEBYSCORE").arg(&leechers_key).arg(0).arg(max_limit).ignore();
-        }
-
         // log the summary
         post_announce_pipeline.cmd("PUBLISH").arg("reqlog").arg(req_log::generate_csv(&user_ip_owned, &parsed.info_hash)).ignore();
 
@@ -194,7 +206,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         };
     });
 
-    return HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body(bruvva_res);
+    return HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body(final_res);
 }
 
 #[get("/healthz")]
