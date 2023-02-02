@@ -25,6 +25,12 @@ pub fn url_encoded_to_hex(urlenc: &str) -> String {
     return hex_str.to_lowercase();
 }
 
+pub fn xd(x: &str) -> &str {
+
+    let mut gg: &str = "1234567890123456789012345678901234567890";
+    return gg;
+}
+
 pub fn url_encoded_to_hex_v2(urlenc: &str) -> String {
     let mut hex_str = String::with_capacity(40);
     let mut chit = urlenc.chars();

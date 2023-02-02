@@ -1,6 +1,8 @@
 #[cfg(test)]
 use crate::byte_functions;
 
+// use criterion::{black_box, criterion_group, criterion_main, Criterion};
+
 #[test]
 fn is_legit(){
     assert_eq!("41", byte_functions::url_encoded_to_hex("A"));
@@ -69,3 +71,11 @@ fn compareUrlToHex(){
         byte_functions::url_encoded_to_hex_v5("%DD%00%D2%1CuDA%AAL%B6J%1E%A7z%2CvFAR%C3");
     }
 }
+
+
+// fn criterion_benchmark(c: &mut Criterion) {
+//     c.bench_function("fib 20", |b| b.iter(|| byte_functions::ip_str_port_u16_to_bytes(black_box("127.0.0.1"), black_box(3333))));
+// }
+
+// criterion_group!(benches, criterion_benchmark);
+// criterion_main!(benches);

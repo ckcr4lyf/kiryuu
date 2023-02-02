@@ -15,3 +15,13 @@ rand = "*"
 
 [profile.release]
 debug = true
+
+[profile.bench]
+debug = true
+
+[dev-dependencies]
+criterion = "0.4"
+
+[[bench]]
+name = "my_benchmark"
+harness = false
