@@ -1,5 +1,7 @@
 mod tests;
 
+use std::str::from_utf8_unchecked;
+
 use hex;
 
 pub fn do_nothing() {
@@ -25,10 +27,121 @@ pub fn url_encoded_to_hex(urlenc: &str) -> String {
     return hex_str.to_lowercase();
 }
 
-pub fn xd(x: &str) -> &str {
+pub fn xd(x: &str) -> String {
 
-    let mut gg: &str = "1234567890123456789012345678901234567890";
-    return gg;
+    let mut hex_str_bytes: [u8; 40] = [0; 40];
+
+    let mut pos_x = 0;
+    let mut pos_hex_str = 0;
+    let raw = x.as_bytes();
+    let max = raw.len();
+
+    while pos_x < max {
+        match raw[pos_x] {
+            // % , meaning the next two char can be used as is
+            // well, we lowercase it
+            0x25 => {
+                hex_str_bytes[pos_hex_str] = raw[pos_x+1];
+                hex_str_bytes[pos_hex_str+1] = raw[pos_x+2];
+                pos_hex_str += 2; // We have done two bytes in the hex str's bytes
+                pos_x += 3;
+            },
+            non_pc => {
+                // This byte is the actual info hash byte
+                // We need its text version
+                // e.g. A => 0x41 => "41" => [0x34, 0x31]
+                let temp = to_hex_op_v0(&non_pc);
+                hex_str_bytes[pos_hex_str] = temp[0];
+                hex_str_bytes[pos_hex_str+1] = temp[1];
+                pos_hex_str += 2;
+                pos_x += 1;
+            }
+        }
+    }
+
+    let str_val = unsafe {
+        from_utf8_unchecked(&hex_str_bytes[0..pos_hex_str])
+    };
+    
+    return str_val.to_owned();
+}
+
+pub fn xd2(x: &str) -> [u8; 40] {
+
+    let mut hex_str_bytes: [u8; 40] = [0; 40];
+
+    let mut pos_x = 0;
+    let mut pos_hex_str = 0;
+    let raw = x.as_bytes();
+    let max = raw.len();
+
+    while pos_x < max {
+        match raw[pos_x] {
+            // % , meaning the next two char can be used as is
+            // well, we lowercase it
+            0x25 => {
+                hex_str_bytes[pos_hex_str] = raw[pos_x+1];
+                hex_str_bytes[pos_hex_str+1] = raw[pos_x+2];
+                pos_hex_str += 2; // We have done two bytes in the hex str's bytes
+                pos_x += 3;
+            },
+            non_pc => {
+                // This byte is the actual info hash byte
+                // We need its text version
+                // e.g. A => 0x41 => "41" => [0x34, 0x31]
+                let temp = to_hex_op_v0(&non_pc);
+                hex_str_bytes[pos_hex_str] = temp[0];
+                hex_str_bytes[pos_hex_str+1] = temp[1];
+                pos_hex_str += 2;
+                pos_x += 1;
+            }
+        }
+    }
+
+    return hex_str_bytes;
+}
+
+const HEX_CHAR_MAP: [u8; 16] = [0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46];
+
+pub fn xd3(x: &str) -> [u8; 40] {
+
+    let mut hex_str_bytes: [u8; 40] = [0; 40];
+
+    let mut pos_x = 0;
+    let mut pos_hex_str = 0;
+    let raw = x.as_bytes();
+    let max = raw.len();
+
+    while pos_x < max {
+        match raw[pos_x] {
+            // % , meaning the next two char can be used as is
+            // well, we lowercase it
+            0x25 => {
+                hex_str_bytes[pos_hex_str] = raw[pos_x+1];
+                hex_str_bytes[pos_hex_str+1] = raw[pos_x+2];
+                pos_hex_str += 2; // We have done two bytes in the hex str's bytes
+                pos_x += 3;
+            },
+            non_pc => {
+                // This byte is the actual info hash byte
+                // We need its text version
+                // e.g. A => 0x41 => "41" => [0x34, 0x31]
+
+                // Get high 4 bits
+                let left = (0b11110000 & non_pc) >> 4;
+
+                // Get low 4 bits
+                let right = 0b00001111 & non_pc;
+
+                hex_str_bytes[pos_hex_str] = HEX_CHAR_MAP[left as usize];
+                hex_str_bytes[pos_hex_str+1] = HEX_CHAR_MAP[right as usize];
+                pos_hex_str += 2;
+                pos_x += 1;
+            }
+        }
+    }
+
+    return hex_str_bytes;
 }
 
 pub fn url_encoded_to_hex_v2(urlenc: &str) -> String {
@@ -41,9 +154,11 @@ pub fn url_encoded_to_hex_v2(urlenc: &str) -> String {
                 match c {
                     '%' => {
                         let c1 = chit.next().expect("bruvva");
-                        hex_str.push(c1.to_ascii_lowercase());
+                        // hex_str.push(c1.to_ascii_lowercase());
+                        hex_str.push(get_lowercase(&c1));
                         let c2 = chit.next().expect("bruvva");
-                        hex_str.push(c2.to_ascii_lowercase());
+                        // hex_str.push(c2.to_ascii_lowercase());
+                        hex_str.push(get_lowercase(&c2));
                     },
                     v => {
                         hex_str.push_str(to_hex_op(v));
@@ -164,7 +279,7 @@ pub fn ip_str_port_u16_to_bytes(ip_str: &str, port: u16) -> Vec<u8> {
 // Such as %C3. We want the literal "c3" for it
 // But if it comes as %c3 , then, well, also "c3"
 // So map uppercase to lower, lower as is, using match.
-fn get_lowercase(chr: char) -> char {
+fn get_lowercase(chr: &char) -> char {
     match chr {
         'A' => 'a',
         'B' => 'b',
@@ -172,26 +287,58 @@ fn get_lowercase(chr: char) -> char {
         'D' => 'd',
         'E' => 'e',
         'F' => 'f',
-        'G' => 'g',
-        'H' => 'h',
-        'I' => 'i',
-        'J' => 'j',
-        'K' => 'k',
-        'L' => 'l',
-        'M' => 'm',
-        'N' => 'n',
-        'O' => 'o',
-        'P' => 'p',
-        'Q' => 'q',
-        'R' => 'r',
-        'S' => 's',
-        'T' => 't',
-        'U' => 'u',
-        'V' => 'v',
-        'W' => 'w',
-        'X' => 'x',
-        _ => 'a',
+        'a' => 'a',
+        'b' => 'b',
+        'c' => 'c',
+        'd' => 'd',
+        'e' => 'e',
+        'f' => 'f',
+        _ => 'a', // should never happen
     }
+}
+
+// For a single 0-16 value (4-bit), return the ascii
+// of the hex character that represents it
+// e.g the number 11 => 0xB in hex => "B" => 0x42
+fn half_byte_to_hex_char(actual: &u8) -> u8 {
+    match actual {
+        0x0 => 0x30, // ("0")
+        0x1 => 0x31, // ("1")
+        0x2 => 0x32, // ("2")
+        0x3 => 0x33, // ("3")
+        0x4 => 0x34, // ("4")
+        0x5 => 0x35, // ("5")
+        0x6 => 0x36, // ("6")
+        0x7 => 0x37, // ("7")
+        0x8 => 0x38, // ("8")
+        0x9 => 0x39, // ("9")
+        0xA => 0x41, // ("A")
+        0xB => 0x42, // ("B")
+        0xC => 0x43, // ("C")
+        0xD => 0x44, // ("D")
+        0xE => 0x45, // ("E")
+        0xF => 0x46, // ("F")
+        _ => panic!("impossible")
+    }
+
+    // Would a 16 element array lookup be quicker?? TBD...
+}
+
+// This will take in a whole byte, and return its
+// hex string, which is two bytes
+// e.g. 0x41 -> "41" = [0x34, 0x31]
+fn to_hex_op_v0(actual: &u8) -> [u8; 2] {
+    // Get high 4 bits
+    let left = (0b11110000 & actual) >> 4;
+
+    // Get low 4 bits
+    let right = 0b00001111 & actual;
+
+    // First character
+    let left_char = half_byte_to_hex_char(&left);
+    let right_char = half_byte_to_hex_char(&right);
+
+    return [left_char, right_char];
 }
 
 fn to_hex_op(chr: char) -> &'static str {

@@ -28,6 +28,18 @@ fn is_legit_v2(){
 }
 
 #[test]
+fn is_legit_xd(){
+    assert_eq!("41", byte_functions::xd("A"));
+    assert_eq!("41", byte_functions::xd("%41"));
+    assert_eq!("4141", byte_functions::xd("A%41"));
+    assert_eq!("4141", byte_functions::xd("%41A"));
+    assert_eq!("4142", byte_functions::xd("%41B"));
+    assert_eq!("4241", byte_functions::xd("B%41"));
+    assert_eq!("4241", byte_functions::xd("BA"));
+    assert_eq!("4142", byte_functions::xd("%41%42"));
+}
+
+#[test]
 fn is_legit_v4(){
     // assert_eq!("41", byte_functions::url_encoded_to_hex_v4("A"));
     // assert_eq!("41", byte_functions::url_encoded_to_hex_v4("%41"));

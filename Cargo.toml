@@ -25,3 +25,7 @@ criterion = "0.4"
 [[bench]]
 name = "my_benchmark"
 harness = false
+
+[[bench]]
+name = "url_enc_to_hex"
+harness = false
