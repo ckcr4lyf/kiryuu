@@ -22,3 +22,10 @@ path = "examples/redis_zscore.rs"
 [[example]]
 name = "redis_zset"
 path = "examples/redis_zset.rs"
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "my_benchmark"
+harness = false
