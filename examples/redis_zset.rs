@@ -24,15 +24,56 @@ fn main(){
         _ => vec![]
     };
 
-    let mut body: [u8; 10] = [0; 10];
-    if let redis::Value::Data(xd) = zrange_result.get(0).unwrap() {
-        body[0] = xd[0];
+    let mut seeders = [0_u8; 50 * 6]; // We will store max 50 guys
+    let mut pos = 0;
+
+    for element in &zrange_result {
+        if let redis::Value::Data(xd) = element {
+            for i in 0..6 {
+                seeders[pos + i] = xd[i];
+            }
+            pos += 6;
+        }
+
+        if pos >= 300 {
+            break;
+        }
     }
 
-    // I Know I have a Vec<redis::Value> now
-    println!("zrange_result is {:?}", zrange_result);
-    println!("body is {:?}", body);
+    println!("Manual seeders are {:?}", seeders);
+
+
+    let dummy: Vec<u8> = vec![0u8; 1];
+    let mut seeders_v2: [&Vec<u8>; 50] = [&dummy; 50];
+
+    pos = 0;
+
+    for element in &zrange_result {
+        if let redis::Value::Data(xd) = element {
+            seeders_v2[pos] = xd;
+            pos += 1;
+        }
+    }
+
+    println!("Manual seeders 2 are {:?}", seeders_v2);
+
+
+
+    // let mut body: [u8; 10] = [0; 10];
+    // if let redis::Value::Data(xd) = zrange_result.get(0).unwrap() {
+    //     body[0] = xd[0];
+    // }
+
+    // // I Know I have a Vec<redis::Value> now
+    // println!("zrange_result is {:?}", zrange_result);
+    // println!("body is {:?}", body);
 
     let og: Vec<Vec<u8>> = r_client.zrangebyscore("MYKEY", "0", "101").unwrap();
     println!("og is {:?}", og)
 }
+
+/* Manual testing:
+FLUSHDB
+ZADD MYKEY 10 ABCDEF
+ZADD MYKEY 10 XXXXXX
+*/
