@@ -9,6 +9,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     group.bench_function("v3", |b| b.iter(|| byte_functions::xd(black_box("%DD%00%D2%1CuDA%AAL%B6J%1E%A7z%2CvFAR%C3")) ));
     group.bench_function("v4", |b| b.iter(|| byte_functions::xd2(black_box("%DD%00%D2%1CuDA%AAL%B6J%1E%A7z%2CvFAR%C3")) ));
     group.bench_function("v5", |b| b.iter(|| byte_functions::xd3(black_box("%DD%00%D2%1CuDA%AAL%B6J%1E%A7z%2CvFAR%C3")) ));
+    group.bench_function("v6", |b| b.iter(|| byte_functions::xd4(black_box("%DD%00%D2%1CuDA%AAL%B6J%1E%A7z%2CvFAR%C3")) ));
     group.finish();
 }
 
