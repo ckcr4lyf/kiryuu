@@ -119,10 +119,9 @@ mod tests {
         // based on the octets after the % not representing valid UTF-8
         // We can get rid of this if we move from String -> [u8; 40].
         unsafe {
-            let xd = url_encoded_to_hex(std::str::from_utf8_unchecked(&[0x25, 0xc3, 0x28]));
             // Hacky way to ensure it is valid utf8
-            println!("XD IS {:?}", xd.as_bytes());
-            _ = std::str::from_utf8(xd.as_bytes());
+            let xd = url_encoded_to_hex(std::str::from_utf8_unchecked(&[0x25, 0xc3, 0x28]));
+            std::str::from_utf8(xd.as_bytes()).expect("INVALID UTF-8 DETECTED!");
         }
     }
 
