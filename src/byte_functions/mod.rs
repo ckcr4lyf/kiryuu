@@ -61,6 +61,11 @@ mod tests {
         assert_eq!("4241", url_encoded_to_hex("B%41"));
         assert_eq!("4241", url_encoded_to_hex("BA"));
         assert_eq!("4142", url_encoded_to_hex("%41%42"));
+
+        // Add some test to make sure the hex is lowercase
+        assert_eq!("4d4e", url_encoded_to_hex("MN"));
+        assert_eq!("1c2f", url_encoded_to_hex("%1C%2F"));
+        assert_eq!("41611c2f4d4e", url_encoded_to_hex("Aa%1C%2FMN"));
     }
 
     #[test]
