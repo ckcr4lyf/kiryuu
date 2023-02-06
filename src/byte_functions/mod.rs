@@ -19,6 +19,15 @@ pub fn url_encoded_to_hex(urlenc: &str) -> String {
     return hex_str.to_lowercase();
 }
 
+
+/// HEX_CHAR_MAP is an index from a nibble to its ASCII representation
+/// Since nibble values are one of 16 hex digits (0-F), this is a 16
+/// character array that maps to the corresponding hex character
+/// e.g. , the nib 0xA -> 0x41 -> "A" (TODO: fix to lowercase)
+const HEX_CHAR_MAP: [u8; 16] = [0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46];
+
+
+
 // Nooby way to convery an IPv4 string and a u16 port into vector of bytes
 // This gives us the "tuple" of (ip, port) of the torrent client as 6 bytes
 // Which we will store directly into redis as is
