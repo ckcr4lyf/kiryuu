@@ -1,0 +1,17 @@
+on:
+  push:
+    branches-ignore: ['master']
+  workflow_call:    
+
+name: Benchmark
+
+jobs:
+  build:
+    name: benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
+
+      - name: Benchmark
+        run: cargo bench
