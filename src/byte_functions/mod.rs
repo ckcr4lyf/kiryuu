@@ -19,6 +19,73 @@ pub fn url_encoded_to_hex(urlenc: &str) -> String {
     return hex_str.to_lowercase();
 }
 
+pub fn url_encoded_to_hex_v2(urlenc: &str) -> String {
+    // Start with 40 mutable bytes on the stack
+    // This allows us to write the expected hex ascii directly
+    // into this array
+    let mut hex_str_bytes: [u8; 40] = [0; 40];
+
+    let mut pos_urlenc = 0;
+    let mut pos_hex_str = 0;
+    let raw = urlenc.as_bytes();
+    let max = raw.len();
+
+    while pos_urlenc < max {
+
+        // Current character in info_hash query param
+        match raw[pos_urlenc] {
+            // % , meaning the next two char can be used as is (percent encoded byte)
+            // Since we also want to lowercase it, we just need to set the 6th bit
+            // This is because the ASCII set is designed in such a way
+            // For digits (0-9), the 6th bit is already set, so its a noop
+            // "A" -> 0x41 -> 0b01000001
+            // "a" -> 0x61 -> 0b01100001
+            0x25 => {
+                hex_str_bytes[pos_hex_str] = raw[pos_urlenc+1] & 0b00100000;
+                hex_str_bytes[pos_hex_str+1] = raw[pos_urlenc+2] & 0b00100000;
+                pos_hex_str += 2;
+                pos_urlenc += 3;
+            },
+            non_pc => {
+                // This byte is the actual info hash byte. So we
+                // Split it into two nibbles and get their ascii
+                // e.g. "A" => 0x41 => 0x4, 0x1 => "4", "1" => [0x34, 0x31]
+                // Get high 4 bits (i,e 0x4_)
+                let left_nibble = (0b11110000 & non_pc) >> 4;
+
+                // Get low 4 bits (i,e 0x_1)
+                let right_nibble = 0b00001111 & non_pc;
+
+                // Get nibbles' hex characters
+                hex_str_bytes[pos_hex_str] = nibble_to_ascii(left_nibble);
+                hex_str_bytes[pos_hex_str+1] = nibble_to_ascii(right_nibble);
+                pos_hex_str += 2;
+                pos_urlenc += 1;
+            }
+        }
+    }
+
+    // SAFETY: The above function guarantees each u8 is within the ASCII set
+    let str_val = unsafe {
+        std::str::from_utf8_unchecked(&hex_str_bytes[0..pos_hex_str])
+    };
+    
+    return str_val.to_owned();
+}
+
+// Based on some PoC, seems fastest way to convert
+// A nibble to it's ascii
+// https://godbolt.org/z/bcr46c7ha
+#[inline(always)]
+fn nibble_to_ascii(nibble: u8) -> u8 {
+    if nibble < 0xA {
+        nibble + 0x30
+    } else {
+        nibble + 0x57
+    }
+}
+
+
 // Nooby way to convery an IPv4 string and a u16 port into vector of bytes
 // This gives us the "tuple" of (ip, port) of the torrent client as 6 bytes
 // Which we will store directly into redis as is
