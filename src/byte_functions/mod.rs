@@ -1,29 +1,8 @@
-use hex;
-
 pub fn url_encoded_to_hex(urlenc: &str) -> String {
-    let mut hex_str = String::new();
-    let mut i = 0;
-
-    while i < urlenc.chars().count() {
-        let the_char = urlenc.chars().nth(i).expect("Shits fucked up yo");
-
-        if the_char == '%' {
-            hex_str.push_str(&urlenc[i + 1..i + 3]);
-            i += 3;
-        } else {
-            hex_str.push_str(&hex::encode(the_char.to_string()));
-            i += 1;
-        }
-    }
-
-    return hex_str.to_lowercase();
-}
-
-pub fn url_encoded_to_hex_v2(urlenc: &str) -> String {
     // Start with 40 mutable bytes on the stack
     // This allows us to write the expected hex ascii directly
     // into this array
-    let mut hex_str_bytes: [u8; 40] = [0; 40];
+    let mut hex_str_bytes: [u8; 40] = [0x41; 40];
 
     let mut pos_urlenc = 0;
     let mut pos_hex_str = 0;
@@ -40,9 +19,11 @@ pub fn url_encoded_to_hex_v2(urlenc: &str) -> String {
             // For digits (0-9), the 6th bit is already set, so its a noop
             // "A" -> 0x41 -> 0b01000001
             // "a" -> 0x61 -> 0b01100001
+            // We also clear the 8th bit to guarantee it's ascii
+            // allowing us to use unsafe from_utf8_unchecked()
             0x25 => {
-                hex_str_bytes[pos_hex_str] = raw[pos_urlenc+1] & 0b00100000;
-                hex_str_bytes[pos_hex_str+1] = raw[pos_urlenc+2] & 0b00100000;
+                hex_str_bytes[pos_hex_str] = (raw[pos_urlenc+1] | 0b0010_0000) & 0b0111_1111;
+                hex_str_bytes[pos_hex_str+1] = (raw[pos_urlenc+2] | 0b0010_0000) & 0b0111_1111;
                 pos_hex_str += 2;
                 pos_urlenc += 3;
             },
@@ -133,6 +114,16 @@ mod tests {
         assert_eq!("4d4e", url_encoded_to_hex("MN"));
         assert_eq!("1c2f", url_encoded_to_hex("%1C%2F"));
         assert_eq!("41611c2f4d4e", url_encoded_to_hex("Aa%1C%2FMN"));
+
+        // Add some test to make sure it can handle invalid UTF-8
+        // based on the octets after the % not representing valid UTF-8
+        // We can get rid of this if we move from String -> [u8; 40].
+        unsafe {
+            let xd = url_encoded_to_hex(std::str::from_utf8_unchecked(&[0x25, 0xc3, 0x28]));
+            // Hacky way to ensure it is valid utf8
+            println!("XD IS {:?}", xd.as_bytes());
+            _ = std::str::from_utf8(xd.as_bytes());
+        }
     }
 
     #[test]
