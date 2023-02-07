@@ -66,27 +66,6 @@ fn nibble_to_ascii(nibble: u8) -> u8 {
     }
 }
 
-pub fn ip_str_port_u16_to_bytes_old(ip_str: &str, port: u16) -> [u8; 6] {
-    let mut result: [u8; 6] = [0; 6];
-    let mut parts = ip_str.split('.');
-
-    for i in 0..4 {
-        result[i] = match parts.next() {
-            Some(v) => match v.parse::<u8>() {
-                Ok(v) => v,
-                Err(_) => 0,
-            }
-            None => 0,
-        }
-    }    
-    
-    let portu8 = port.to_be_bytes();
-    result[4] = portu8[0];
-    result[5] = portu8[1];
-
-    return result;
-}
-
 // Convert the ipv4 addr, port combo to a [u8; 6]
 pub fn ip_str_port_u16_to_bytes(ip_addr: &std::net::Ipv4Addr, port: u16) -> [u8; 6] {
     let mut result: [u8; 6] = [0; 6];

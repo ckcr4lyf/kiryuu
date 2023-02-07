@@ -4,7 +4,7 @@ mod constants;
 mod req_log;
 
 use actix_web::{get, App, HttpServer, web, HttpRequest, HttpResponse, http::header, http::StatusCode};
-use std::{time::{SystemTime, UNIX_EPOCH}, net::{SocketAddrV4, SocketAddr}};
+use std::{time::{SystemTime, UNIX_EPOCH}};
 use clap::Parser;
 
 /// Simple
@@ -192,6 +192,8 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 
     actix_web::rt::spawn(async move {
         // log the summary
+        // TODO: For now removed this since we no longer have string IP
+        // in future can enable via compilation feature
         // post_announce_pipeline.cmd("PUBLISH").arg("reqlog").arg(req_log::generate_csv(&user_ip_owned, &parsed.info_hash)).ignore();
 
 
