@@ -28,3 +28,7 @@ criterion = "0.4"
 [[bench]]
 name = "url_enc_to_hex"
 harness = false
+
+[[bench]]
+name = "ip_str_to_bytes"
+harness = false

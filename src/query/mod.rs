@@ -20,7 +20,7 @@ pub struct AReq {
 
 #[derive(Debug)]
 pub struct PeerInfo {
-    pub ip_port: Vec<u8>,
+    pub ip_port: [u8; 6],
     pub info_hash: String,
     pub is_seeding: bool,
     pub event: Option<String>,
