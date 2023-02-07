@@ -67,35 +67,10 @@ fn nibble_to_ascii(nibble: u8) -> u8 {
 }
 
 
-// Nooby way to convery an IPv4 string and a u16 port into vector of bytes
+// Nooby way to convery an IPv4 string and a u16 port into a [u8; 6]
 // This gives us the "tuple" of (ip, port) of the torrent client as 6 bytes
 // Which we will store directly into redis as is
-// Error Handling: 0 (for now...)
-pub fn ip_str_port_u16_to_bytes(ip_str: &str, port: u16) -> Vec<u8> {
-    let mut bytes: Vec<u8> = vec![0; 4];
-    let parts: Vec<&str> = ip_str.split('.').collect();
-
-    if parts.len() != 4 {
-        panic!("Not 4 parts..."); // TODO: Error handling
-    }
-
-    for i in 0..4 {
-        bytes[i] = parts
-            .get(i)
-            .expect("Did not get part")
-            .parse()
-            .expect("Cannot parse into u8");
-    }
-
-    // println!("Bytes is now {:?}", bytes);
-
-    bytes.append(&mut Vec::from(port.to_be_bytes()));
-
-    // println!("Bytes is now {:?}", bytes);
-    return bytes;
-}
-
-pub fn ip_str_port_u16_to_bytes_u8(ip_str: &str, port: u16) -> [u8; 6] {
+pub fn ip_str_port_u16_to_bytes(ip_str: &str, port: u16) -> [u8; 6] {
     let mut result: [u8; 6] = [0; 6];
     let mut parts = ip_str.split('.');
 
