@@ -38,7 +38,7 @@ impl From<serde_qs::Error> for QueryError {
     }
 }
 
-pub fn parse_announce(ip_str: &str, query: &[u8]) -> Result<PeerInfo, QueryError> {
+pub fn parse_announce(ip_addr: &std::net::Ipv4Addr, query: &[u8]) -> Result<PeerInfo, QueryError> {
 
     // Solution: manually parse & encoded infohash from `&info_hash=.........&xyz=.....
     let parsed: AReq = qs::from_bytes(query)?;
@@ -56,7 +56,7 @@ pub fn parse_announce(ip_str: &str, query: &[u8]) -> Result<PeerInfo, QueryError
     };
 
     return Ok(PeerInfo{
-        ip_port: byte_functions::ip_str_port_u16_to_bytes(ip_str, parsed.port),
+        ip_port: byte_functions::ip_str_port_u16_to_bytes(ip_addr, parsed.port),
         info_hash: hex_str_info_hash.to_string(),
         is_seeding,
         event: parsed.event,

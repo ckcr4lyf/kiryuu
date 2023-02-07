@@ -66,11 +66,7 @@ fn nibble_to_ascii(nibble: u8) -> u8 {
     }
 }
 
-
-// Nooby way to convery an IPv4 string and a u16 port into a [u8; 6]
-// This gives us the "tuple" of (ip, port) of the torrent client as 6 bytes
-// Which we will store directly into redis as is
-pub fn ip_str_port_u16_to_bytes(ip_str: &str, port: u16) -> [u8; 6] {
+pub fn ip_str_port_u16_to_bytes_old(ip_str: &str, port: u16) -> [u8; 6] {
     let mut result: [u8; 6] = [0; 6];
     let mut parts = ip_str.split('.');
 
@@ -83,6 +79,22 @@ pub fn ip_str_port_u16_to_bytes(ip_str: &str, port: u16) -> [u8; 6] {
             None => 0,
         }
     }    
+    
+    let portu8 = port.to_be_bytes();
+    result[4] = portu8[0];
+    result[5] = portu8[1];
+
+    return result;
+}
+
+// Convert the ipv4 addr, port combo to a [u8; 6]
+pub fn ip_str_port_u16_to_bytes(ip_addr: &std::net::Ipv4Addr, port: u16) -> [u8; 6] {
+    let mut result: [u8; 6] = [0; 6];
+    let ip_octets = ip_addr.octets();
+
+    for i in 0..4 {
+        result[i] = ip_octets[i];
+    }
     
     let portu8 = port.to_be_bytes();
     result[4] = portu8[0];
@@ -125,15 +137,15 @@ mod tests {
     fn can_parse_ip_port() {
         assert_eq!(
             vec![127, 0, 0, 1, 13, 5],
-            ip_str_port_u16_to_bytes("127.0.0.1", 3333)
+            ip_str_port_u16_to_bytes(&std::net::Ipv4Addr::new(127, 0, 0, 1), 3333)
         );
         assert_eq!(
             vec![1, 1, 1, 1, 255, 255],
-            ip_str_port_u16_to_bytes("1.1.1.1", 65535)
+            ip_str_port_u16_to_bytes(&std::net::Ipv4Addr::new(1,1,1,1), 65535)
         ); // Shilling Cloudflare
         assert_eq!(
             vec![192, 168, 1, 1, 105, 137],
-            ip_str_port_u16_to_bytes("192.168.1.1", 27017)
+            ip_str_port_u16_to_bytes(&std::net::Ipv4Addr::new(192, 168, 1, 1), 27017)
         );
     }
 }
