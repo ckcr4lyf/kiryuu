@@ -51,6 +51,7 @@ jobs:
         run: |
           IF_NAME="$(ifconfig | grep -B1 "172.18.0.1" | head -n1 | awk '{print $1}' | cut -d ':' -f1)"
           sudo tcpdump -nnSX port 6969 -i $IF_NAME &>tcpdump_host.log &
+          sudo tcpdump -i $IF_NAME &>tcpdump_host.pcap &
 
       - name: Download imdl (thanks @casey)
         run: |
@@ -94,7 +95,9 @@ jobs:
           name: tcpdump_logs
           path: |
             ./tcpdump.log
+            ./tcpdump.pcap
             ./tcpdump_host.log        
+            ./tcpdump_host.pcap        
 
       - name: Compare hashes
         env:
