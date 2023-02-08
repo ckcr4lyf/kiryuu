@@ -81,7 +81,7 @@ jobs:
 
       - name: Run qbit leecher
         id: docker_qbit
-        uses: ckcr4lyf/actions-kiryuu-qbit-test@v2.2.6
+        uses: ckcr4lyf/actions-kiryuu-qbit-test@v2.2.7
         with:
           torrent_name: hello.txt.torrent
           file_name: hello.txt
