@@ -18,10 +18,9 @@ pub struct AReq {
     pub event: Option<String>,
 }
 
-#[derive(Debug)]
 pub struct PeerInfo {
     pub ip_port: [u8; 6],
-    pub info_hash: [u8; 40],
+    pub info_hash: byte_functions::types::RawVal<40>,
     pub is_seeding: bool,
     pub event: Option<String>,
 }
@@ -57,7 +56,7 @@ pub fn parse_announce(ip_addr: &std::net::Ipv4Addr, query: &[u8]) -> Result<Peer
 
     return Ok(PeerInfo{
         ip_port: byte_functions::ip_str_port_u16_to_bytes(ip_addr, parsed.port),
-        info_hash: hex_str_info_hash,
+        info_hash: byte_functions::types::RawVal(hex_str_info_hash),
         is_seeding,
         event: parsed.event,
     });

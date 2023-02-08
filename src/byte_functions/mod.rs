@@ -1,3 +1,33 @@
+use crate::constants;
+
+pub mod types;
+
+pub fn make_seeder_key(info_hash: &types::RawVal<40>) -> (types::RawVal<48>, types::RawVal<49>, types::RawVal<46>) {
+    let mut seeder_key: [u8; 48] = [0; 48];
+    let mut leecher_key: [u8; 49] = [0; 49];
+    let mut cache_key: [u8; 46] = [0; 46];
+
+    for i in 0..40 {
+        seeder_key[i] = info_hash[i];
+        leecher_key[i] = info_hash[i];
+        cache_key[i] = info_hash[i]
+    }
+
+    for i in 0..8 {
+        seeder_key[i] = constants::SEEDER_SUFFIX[i];
+    }
+
+    for i in 0..9 {
+        leecher_key[i] = constants::LEECHER_SUFFIX[i];
+    }
+
+    for i in 0..6 {
+        leecher_key[i] = constants::CACHE_SUFFIX[i];
+    }
+
+    return (types::RawVal(seeder_key), types::RawVal(leecher_key), types::RawVal(cache_key));
+}
+
 pub fn url_encoded_to_hex_u8(urlenc: &str) -> [u8; 40] {
     // Start with 40 mutable bytes on the stack
     // This allows us to write the expected hex ascii directly
@@ -83,28 +113,21 @@ mod tests {
 
     #[test]
     fn is_legit() {
-        assert_eq!("41", url_encoded_to_hex("A"));
-        assert_eq!("41", url_encoded_to_hex("%41"));
-        assert_eq!("4141", url_encoded_to_hex("A%41"));
-        assert_eq!("4141", url_encoded_to_hex("%41A"));
-        assert_eq!("4142", url_encoded_to_hex("%41B"));
-        assert_eq!("4241", url_encoded_to_hex("B%41"));
-        assert_eq!("4241", url_encoded_to_hex("BA"));
-        assert_eq!("4142", url_encoded_to_hex("%41%42"));
+        // All the extra bytes will be 0x41 aka b"A"
+        // "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        assert_eq!(*b"41AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", url_encoded_to_hex_u8("A"));
+        assert_eq!(*b"41AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", url_encoded_to_hex_u8("%41"));
+        assert_eq!(*b"4141AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", url_encoded_to_hex_u8("A%41"));
+        assert_eq!(*b"4141AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", url_encoded_to_hex_u8("%41A"));
+        assert_eq!(*b"4142AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", url_encoded_to_hex_u8("%41B"));
+        assert_eq!(*b"4241AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", url_encoded_to_hex_u8("B%41"));
+        assert_eq!(*b"4241AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", url_encoded_to_hex_u8("BA"));
+        assert_eq!(*b"4142AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", url_encoded_to_hex_u8("%41%42"));
 
         // Add some test to make sure the hex is lowercase
-        assert_eq!("4d4e", url_encoded_to_hex("MN"));
-        assert_eq!("1c2f", url_encoded_to_hex("%1C%2F"));
-        assert_eq!("41611c2f4d4e", url_encoded_to_hex("Aa%1C%2FMN"));
-
-        // Add some test to make sure it can handle invalid UTF-8
-        // based on the octets after the % not representing valid UTF-8
-        // We can get rid of this if we move from String -> [u8; 40].
-        unsafe {
-            // Hacky way to ensure it is valid utf8
-            let xd = url_encoded_to_hex(std::str::from_utf8_unchecked(&[0x25, 0xc3, 0x28]));
-            std::str::from_utf8(xd.as_bytes()).expect("INVALID UTF-8 DETECTED!");
-        }
+        assert_eq!(*b"4d4eAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", url_encoded_to_hex_u8("MN"));
+        assert_eq!(*b"1c2fAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", url_encoded_to_hex_u8("%1C%2F"));
+        assert_eq!(*b"41611c2f4d4eAAAAAAAAAAAAAAAAAAAAAAAAAAAA", url_encoded_to_hex_u8("Aa%1C%2FMN"));
     }
 
     #[test]

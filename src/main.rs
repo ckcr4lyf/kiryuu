@@ -43,32 +43,6 @@ impl redis::FromRedisValue for Exists {
     }
 }
 
-fn make_seeder_key(info_hash: &[u8; 40]) -> ([u8; 48], [u8; 49], [u8; 46]) {
-    let seeder_key: [u8; 48] = [0; 48];
-    let leecher_key: [u8; 49] = [0; 49];
-    let cache_key: [u8; 46] = [0; 46];
-
-    for i in 0..40 {
-        seeder_key[i] = info_hash[i];
-        leecher_key[i] = info_hash[i];
-        cache_key[i] = info_hash[i]
-    }
-
-    for i in 0..8 {
-        seeder_key[i] = constants::SEEDER_SUFFIX[i];
-    }
-
-    for i in 0..9 {
-        leecher_key[i] = constants::LEECHER_SUFFIX[i];
-    }
-
-    for i in 0..6 {
-        leecher_key[i] = constants::CACHE_SUFFIX[i];
-    }
-
-    return (seeder_key, leecher_key, cache_key);
-}
-
 #[get("/announce")]
 async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {    
    
@@ -102,7 +76,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 
     // Get seeders & leechers
     let mut rc = data.redis_connection.clone();
-    let (seeders_key, leechers_key, cache_key) = make_seeder_key(&parsed.info_hash);
+    let (seeders_key, leechers_key, cache_key) = byte_functions::make_seeder_key(&parsed.info_hash);
 
     let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = redis::pipe()
         .cmd("ZSCORE").arg(&seeders_key).arg(&parsed.ip_port)
