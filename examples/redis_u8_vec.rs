@@ -16,7 +16,25 @@ fn vec_guy(c: &mut redis::Connection) {
     let d1: redis::Value = c.zadd("XD", gg, 100).unwrap();
 }
 
+struct InfoHash([u8; 40]);
+
+struct RawVal<const T: usize>([u8; T]);
+
+impl redis::ToRedisArgs for InfoHash {
+    fn write_redis_args<W>(&self, out: &mut W) where W: ?Sized + redis::RedisWrite {
+        out.write_arg(&self.0)
+    }
+}
+
+impl<const T: usize> redis::ToRedisArgs for RawVal<T> {
+    fn write_redis_args<W>(&self, out: &mut W) where W: ?Sized + redis::RedisWrite {
+        out.write_arg(&self.0)
+    }
+}
+
 fn u8_guy(c: &mut redis::Connection) {
-    let wp: [u8; 3] = [0x20, 0x22, 0x33];
-    let d2: redis::Value = c.zadd("XD", &wp, 100).unwrap();
+    // let wp: [u8; 3] = [0x20, 0x22, 0x33];
+    let wp: [u8; 40] = [0; 40];
+    let WP = RawVal(wp);
+    let d2: redis::Value = c.zadd("XD", WP, 100).unwrap();
 }

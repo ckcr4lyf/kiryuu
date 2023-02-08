@@ -1,4 +1,4 @@
-pub fn url_encoded_to_hex(urlenc: &str) -> String {
+pub fn url_encoded_to_hex_u8(urlenc: &str) -> [u8; 40] {
     // Start with 40 mutable bytes on the stack
     // This allows us to write the expected hex ascii directly
     // into this array
@@ -46,12 +46,7 @@ pub fn url_encoded_to_hex(urlenc: &str) -> String {
         }
     }
 
-    // SAFETY: The above function guarantees each u8 is within the ASCII set
-    let str_val = unsafe {
-        std::str::from_utf8_unchecked(&hex_str_bytes[0..pos_hex_str])
-    };
-    
-    return str_val.to_owned();
+    return hex_str_bytes;
 }
 
 // Based on some PoC, seems fastest way to convert
