@@ -18,10 +18,9 @@ pub struct AReq {
     pub event: Option<String>,
 }
 
-#[derive(Debug)]
 pub struct PeerInfo {
     pub ip_port: [u8; 6],
-    pub info_hash: String,
+    pub info_hash: byte_functions::types::RawVal<40>,
     pub is_seeding: bool,
     pub event: Option<String>,
 }
@@ -44,7 +43,7 @@ pub fn parse_announce(ip_addr: &std::net::Ipv4Addr, query: &[u8]) -> Result<Peer
     let parsed: AReq = qs::from_bytes(query)?;
 
     // let hex_str_info_hash = "XD";
-    let hex_str_info_hash = byte_functions::url_encoded_to_hex(&parsed.info_hash);
+    let hex_str_info_hash = byte_functions::url_encoded_to_hex_u8(&parsed.info_hash);
 
     if hex_str_info_hash.len() != 40 {
         return Err(QueryError::Custom("Infohash was not 20 bytes".to_string()));
@@ -57,7 +56,7 @@ pub fn parse_announce(ip_addr: &std::net::Ipv4Addr, query: &[u8]) -> Result<Peer
 
     return Ok(PeerInfo{
         ip_port: byte_functions::ip_str_port_u16_to_bytes(ip_addr, parsed.port),
-        info_hash: hex_str_info_hash.to_string(),
+        info_hash: byte_functions::types::RawVal(hex_str_info_hash),
         is_seeding,
         event: parsed.event,
     });

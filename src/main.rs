@@ -76,9 +76,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 
     // Get seeders & leechers
     let mut rc = data.redis_connection.clone();
-    let seeders_key = parsed.info_hash.clone() + "_seeders";
-    let leechers_key = parsed.info_hash.clone() + "_leechers";
-    let cache_key = parsed.info_hash.clone() + "_cache";
+    let (seeders_key, leechers_key, cache_key) = byte_functions::make_redis_keys(&parsed.info_hash);
 
     let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = redis::pipe()
         .cmd("ZSCORE").arg(&seeders_key).arg(&parsed.ip_port)

@@ -51,6 +51,7 @@ jobs:
         run: |
           IF_NAME="$(ifconfig | grep -B1 "172.18.0.1" | head -n1 | awk '{print $1}' | cut -d ':' -f1)"
           sudo tcpdump -nnSX port 6969 -i $IF_NAME &>tcpdump_host.log &
+          sudo tcpdump -i $IF_NAME &>tcpdump_host.pcap &
 
       - name: Download imdl (thanks @casey)
         run: |
@@ -80,13 +81,23 @@ jobs:
 
       - name: Run qbit leecher
         id: docker_qbit
-        uses: ckcr4lyf/actions-kiryuu-qbit-test@v2.2.5
+        uses: ckcr4lyf/actions-kiryuu-qbit-test@v2.2.7
         with:
           torrent_name: hello.txt.torrent
           file_name: hello.txt
 
       - name: Kill Kiryuu
         run: kill -9 `lsof -i:6969 -t`
+
+      - name: Upload tcpdump logs
+        uses: actions/upload-artifact@v3
+        with:
+          name: tcpdump_logs
+          path: |
+            ./tcpdump.log
+            ./tcpdump.pcap
+            ./tcpdump_host.log        
+            ./tcpdump_host.pcap        
 
       - name: Compare hashes
         env:
@@ -100,14 +111,6 @@ jobs:
             else
               echo "Success, OG_SHA=$OG_SHA and NEW_SHA=$NEW_SHA"
           fi          
-
-      - name: Upload tcpdump logs
-        uses: actions/upload-artifact@v3
-        with:
-          name: tcpdump_logs
-          path: |
-            ./tcpdump.log
-            ./tcpdump_host.log
 
   test-gauge:
     name: Run tests with gauge
