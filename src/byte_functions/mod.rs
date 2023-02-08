@@ -1,28 +1,14 @@
-use crate::constants;
-
 pub mod types;
 
-pub fn make_seeder_key(info_hash: &types::RawVal<40>) -> (types::RawVal<48>, types::RawVal<49>, types::RawVal<46>) {
-    let mut seeder_key: [u8; 48] = [0; 48];
-    let mut leecher_key: [u8; 49] = [0; 49];
-    let mut cache_key: [u8; 46] = [0; 46];
+pub fn make_redis_keys(info_hash: &types::RawVal<40>) -> (types::RawVal<48>, types::RawVal<49>, types::RawVal<46>) {
+    let mut seeder_key: [u8; 48] = *b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA_seeders";
+    let mut leecher_key: [u8; 49] = *b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA_leechers";
+    let mut cache_key: [u8; 46] = *b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA_cache";
 
     for i in 0..40 {
         seeder_key[i] = info_hash[i];
         leecher_key[i] = info_hash[i];
         cache_key[i] = info_hash[i]
-    }
-
-    for i in 0..8 {
-        seeder_key[i] = constants::SEEDER_SUFFIX[i];
-    }
-
-    for i in 0..9 {
-        leecher_key[i] = constants::LEECHER_SUFFIX[i];
-    }
-
-    for i in 0..6 {
-        leecher_key[i] = constants::CACHE_SUFFIX[i];
     }
 
     return (types::RawVal(seeder_key), types::RawVal(leecher_key), types::RawVal(cache_key));
@@ -128,6 +114,9 @@ mod tests {
         assert_eq!(*b"4d4eAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", url_encoded_to_hex_u8("MN"));
         assert_eq!(*b"1c2fAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", url_encoded_to_hex_u8("%1C%2F"));
         assert_eq!(*b"41611c2f4d4eAAAAAAAAAAAAAAAAAAAAAAAAAAAA", url_encoded_to_hex_u8("Aa%1C%2FMN"));
+
+        // TODO: Add some tests for bad infohash
+        // e.g. "%A" <- only 1 char following percent
     }
 
     #[test]
