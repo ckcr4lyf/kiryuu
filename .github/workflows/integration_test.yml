@@ -25,7 +25,7 @@ jobs:
           --health-retries 5
 
       qbit-svc:
-        image: ghcr.io/ckcr4lyf/qbit-svc
+        image: ghcr.io/ckcr4lyf/qbit-svc:master
 
         ports:
           - 8888:8080
@@ -81,7 +81,7 @@ jobs:
 
       - name: Run qbit leecher
         id: docker_qbit
-        uses: ckcr4lyf/actions-kiryuu-qbit-test@v2.2.7
+        uses: docker://ghcr.io/ckcr4lyf/qbit-leecher:master
         with:
           torrent_name: hello.txt.torrent
           file_name: hello.txt
