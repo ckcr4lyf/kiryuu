@@ -91,12 +91,8 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     let mut seed_count_mod: i64 = 0;
     let mut leech_count_mod: i64 = 0;
 
-    let event = match &parsed.event {
-        Some(event_value) => event_value,
-        None => "unknown",
-    };
 
-    if event == "stopped" {
+    if let query::Event::Stopped = parsed.event {
         if let Exists::Yes = is_seeder_v2 {
             seed_count_mod -= 1;
             post_announce_pipeline.cmd("ZREM").arg(&seeders_key).arg(&parsed.ip_port).ignore(); // We dont care about the return value
@@ -113,7 +109,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         }
 
         // They just completed
-        if event == "completed" {
+        if let query::Event::Completed = parsed.event {
             // If they were previously leecher, remove from that pool
             if let Exists::Yes = is_leecher_v2 {
                 post_announce_pipeline.cmd("ZREM").arg(&leechers_key).arg(&parsed.ip_port).ignore();
