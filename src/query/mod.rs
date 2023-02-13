@@ -18,11 +18,17 @@ pub struct AReq {
     pub event: Option<String>,
 }
 
+pub enum Event {
+    Unknown,
+    Stopped,
+    Completed,
+}
+
 pub struct PeerInfo {
     pub ip_port: [u8; 6],
     pub info_hash: byte_functions::types::RawVal<40>,
     pub is_seeding: bool,
-    pub event: Option<String>,
+    pub event: Event
 }
 
 pub enum QueryError {
@@ -54,11 +60,23 @@ pub fn parse_announce(ip_addr: &std::net::Ipv4Addr, query: &[u8]) -> Result<Peer
         _ => false,
     };
 
+    
+
+    let announce_event = if let Some(ref event) = parsed.event {
+        match event.as_str() {
+            "stopped" => Event::Stopped,
+            "completed" => Event::Completed,
+            _ => Event::Unknown,
+        }
+    } else {
+        Event::Unknown
+    };
+
     return Ok(PeerInfo{
         ip_port: byte_functions::ip_str_port_u16_to_bytes(ip_addr, parsed.port),
         info_hash: byte_functions::types::RawVal(hex_str_info_hash),
         is_seeding,
-        event: parsed.event,
+        event: announce_event,
     });
 }
 
