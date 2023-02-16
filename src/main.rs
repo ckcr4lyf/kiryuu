@@ -70,9 +70,6 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             },
             query::QueryError::InvalidInfohash => {
                 return HttpResponse::build(StatusCode::BAD_REQUEST).body("Infohash is not 40 bytes\n");
-            },
-            query::QueryError::Custom(e) => {
-                return HttpResponse::build(StatusCode::BAD_REQUEST).body(e + "\n");
             }
         }
     };

@@ -34,7 +34,6 @@ pub struct PeerInfo {
 pub enum QueryError {
     ParseFailure,
     InvalidInfohash,
-    Custom(String),
 }
 
 // Allows us to use `?` postfix and wrap to QueryError
