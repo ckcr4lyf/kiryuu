@@ -67,9 +67,9 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         Err(e) => match e {
             query::QueryError::ParseFailure => {
                 return HttpResponse::build(StatusCode::BAD_REQUEST).body("Failed to parse announce\n");
-            }
-            query::QueryError::Custom(e) => {
-                return HttpResponse::build(StatusCode::BAD_REQUEST).body(e + "\n");
+            },
+            query::QueryError::InvalidInfohash => {
+                return HttpResponse::build(StatusCode::BAD_REQUEST).body("Infohash is not 20 bytes\n");
             }
         }
     };

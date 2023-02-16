@@ -33,7 +33,7 @@ pub struct PeerInfo {
 
 pub enum QueryError {
     ParseFailure,
-    Custom(String),
+    InvalidInfohash,
 }
 
 // Allows us to use `?` postfix and wrap to QueryError
@@ -44,23 +44,17 @@ impl From<serde_qs::Error> for QueryError {
 }
 
 pub fn parse_announce(ip_addr: &std::net::Ipv4Addr, query: &[u8]) -> Result<PeerInfo, QueryError> {
-
-    // Solution: manually parse & encoded infohash from `&info_hash=.........&xyz=.....
     let parsed: AReq = qs::from_bytes(query)?;
-
-    // let hex_str_info_hash = "XD";
     let hex_str_info_hash = byte_functions::url_encoded_to_hex_u8(&parsed.info_hash);
 
     if hex_str_info_hash.len() != 40 {
-        return Err(QueryError::Custom("Infohash was not 20 bytes".to_string()));
+        return Err(QueryError::InvalidInfohash);
     }
 
     let is_seeding = match parsed.left.as_str() {
         "0" => true,
         _ => false,
     };
-
-    
 
     let announce_event = if let Some(ref event) = parsed.event {
         match event.as_str() {
@@ -79,8 +73,6 @@ pub fn parse_announce(ip_addr: &std::net::Ipv4Addr, query: &[u8]) -> Result<Peer
         event: announce_event,
     });
 }
-
-// fn peer_bytes_to_str
 
 pub fn announce_reply(seeders_count: i64, leechers_count: i64, seeders: &[Vec<u8>], leechers: &[Vec<u8>]) -> Vec<u8> {
     // This is the number of peers in the response, not total peer count
