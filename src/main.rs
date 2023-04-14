@@ -235,6 +235,16 @@ async fn main() -> std::io::Result<()> {
     let port = args.port.unwrap_or_else(|| 6969);
     let host = args.host.unwrap_or_else(|| "0.0.0.0".to_string());
 
+    // Cleanup job
+    actix_web::rt::spawn(async {
+        // For loop
+        // Sleep 30 mins
+        actix_web::rt::time::sleep(std::time::Duration::from_secs(60 * 31)).await;
+
+        // Do stuff
+
+    });
+
     return HttpServer::new(move || {
         App::new()
         .app_data(data.clone())
