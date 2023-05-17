@@ -145,3 +145,4 @@ jobs:
         env:
           KIRYUU_HOST: http://172.17.0.1:6969
           REDIS_HOST: redis://172.17.0.1:6379
+          ANNOUNCE_IP_PORT: AC120003115C #172.18.0.3:4444 <- This is the IP kiryuu will see the announce come from, so what we need to hardcode in redis via Gauge
