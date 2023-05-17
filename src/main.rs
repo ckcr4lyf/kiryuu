@@ -101,10 +101,11 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             post_announce_pipeline.cmd("ZREM").arg(&leechers_key).arg(&parsed.ip_port).ignore(); // We dont care about the return value
         }
     } else if parsed.is_seeding {
+        // ZADD it regardless to update timestamp for the guy (in redis)
+        post_announce_pipeline.cmd("ZADD").arg(&seeders_key).arg(time_now_ms).arg(&parsed.ip_port).ignore();
 
         // New seeder
         if let Exists::No = is_seeder_v2 {
-            post_announce_pipeline.cmd("ZADD").arg(&seeders_key).arg(time_now_ms).arg(&parsed.ip_port).ignore();
             seed_count_mod += 1;
         }
 
@@ -119,10 +120,14 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             // Increment the downloaded count for the infohash stats
             post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("downloaded").arg(1u32).ignore();
         }
-    } else if let Exists::No = is_leecher_v2 {
-            post_announce_pipeline.cmd("ZADD").arg(&leechers_key).arg(time_now_ms).arg(&parsed.ip_port).ignore();
+    } else {
+        // ZADD it regardless to update timestamp for the guy (in redis)
+        post_announce_pipeline.cmd("ZADD").arg(&leechers_key).arg(time_now_ms).arg(&parsed.ip_port).ignore();
+
+        if let Exists::No = is_leecher_v2 {
             leech_count_mod += 1;
-    };
+        };
+    } 
 
     // Cache miss = query redis
     // no change = update cache
