@@ -11,3 +11,21 @@ Many thanks to horsie and anon from Discord, both of whom were extremely helpful
 ## Usage
 
 The current release can be considered stable, but is not intended for use by others - it is not very customizable yet. That said, feel free to hack around with it if you like!
+
+### Building
+
+Best to build in release mode and target your CPU natively for better performance.
+
+```
+$ RUSTFLAGS="-C target-cpu=native" cargo build --release
+```
+
+### ulimits
+
+Make sure you set a high ulimit for open files! By default some VPS might set this to 1024, and then `kiryuu` won't be able to handle high traffic.
+
+If you've already started kiryuu, you can identify its PID and then set it via:
+
+```
+$ prlimit --pid PID_HERE --nofile=16384:16384
+```
