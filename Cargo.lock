@@ -940,7 +940,7 @@ dependencies = [
 
 [[package]]
 name = "kiryuu"
-version = "0.1.1"
+version = "0.3.0"
 dependencies = [
  "actix-web",
  "clap 4.0.30",
