@@ -84,6 +84,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         let mut rc = data.redis_connection.clone();
         let (seeders_key, leechers_key, cache_key) = byte_functions::make_redis_keys(&parsed.info_hash);
 
+        ctx.span().add_event("Gonna call redis", vec![]);
         let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = redis::pipe()
             .cmd("ZSCORE").arg(&seeders_key).arg(&parsed.ip_port)
             .cmd("ZSCORE").arg(&leechers_key).arg(&parsed.ip_port)
@@ -215,6 +216,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     }).await
 }
 
+#[cfg(feature = "tracing")]
 #[get("/healthz")]
 async fn healthz(data: web::Data<AppState>) -> HttpResponse {
     let tracer = global::tracer("healthz");
@@ -223,13 +225,28 @@ async fn healthz(data: web::Data<AppState>) -> HttpResponse {
         let mut rc = data.redis_connection.clone();
         let () = match redis::cmd("PING").query_async::<redis::aio::MultiplexedConnection, ()>(&mut rc).await {
             Ok(_) => {
-                return HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body("OK");
+                return HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body("WOWIE");
             },
             Err(_) => {
                 return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).append_header(header::ContentType::plaintext()).body("FUCKED");
             }
         };
     }).await
+}
+
+
+#[cfg(not(feature = "tracing"))]
+#[get("/healthz")]
+async fn healthz(data: web::Data<AppState>) -> HttpResponse {
+    let mut rc = data.redis_connection.clone();
+    let () = match redis::cmd("PING").query_async::<redis::aio::MultiplexedConnection, ()>(&mut rc).await {
+        Ok(_) => {
+            return HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body("OK");
+        },
+        Err(_) => {
+            return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).append_header(header::ContentType::plaintext()).body("FUCKED");
+        }
+    };
 }
 
 struct AppState {
