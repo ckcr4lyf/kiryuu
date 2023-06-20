@@ -38,6 +38,15 @@ enum Exists {
     No,
 }
 
+impl From<&Exists> for bool {
+    fn from(item: &Exists) -> Self {
+        match item {
+            Exists::Yes => true,
+            Exists::No => false,
+        }
+    }
+}
+
 impl redis::FromRedisValue for Exists {
     fn from_redis_value(v: &redis::Value) -> redis::RedisResult<Exists> {
         match *v {
@@ -84,12 +93,14 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         let mut rc = data.redis_connection.clone();
         let (seeders_key, leechers_key, cache_key) = byte_functions::make_redis_keys(&parsed.info_hash);
 
-        ctx.span().add_event("Gonna call redis", vec![]);
+        
         let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = redis::pipe()
             .cmd("ZSCORE").arg(&seeders_key).arg(&parsed.ip_port)
             .cmd("ZSCORE").arg(&leechers_key).arg(&parsed.ip_port)
             .cmd("GET").arg(&cache_key)
             .query_async(&mut rc).await.unwrap();
+
+        ctx.span().add_event("Got initial response from redis", vec![Key::new("is_seeder").bool(&is_seeder_v2), Key::new("is_leecher").bool(&is_leecher_v2)]);
 
         let mut post_announce_pipeline = redis::pipe();
         post_announce_pipeline.cmd("ZADD").arg(constants::TORRENTS_KEY).arg(time_now_ms).arg(&parsed.info_hash).ignore(); // To "update" the torrent
@@ -147,6 +158,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
                 .cmd("ZRANGEBYSCORE").arg(&seeders_key).arg(max_limit).arg(time_now_ms).arg("LIMIT").arg(0).arg(50)
                 .cmd("ZRANGEBYSCORE").arg(&leechers_key).arg(max_limit).arg(time_now_ms).arg("LIMIT").arg(0).arg(50)
                 .query_async(&mut rc).await.unwrap();
+                ctx.span().add_event("Cache miss - got fresh ZRANGEBYSCORE from redis", vec![]);
             
                 // endex = end index XD. seems in rust cannot select first 50 elements, or limit to less if vector doesnt have 50
                 // e.g. &seeders[0..50] is panicking when seeders len is < 50. Oh well.
@@ -222,15 +234,7 @@ async fn healthz(data: web::Data<AppState>) -> HttpResponse {
     let tracer = global::tracer("healthz");
     tracer.in_span("index", |ctx| async move {
         ctx.span().set_attribute(Key::new("parameter").i64(10));
-        let mut rc = data.redis_connection.clone();
-        let () = match redis::cmd("PING").query_async::<redis::aio::MultiplexedConnection, ()>(&mut rc).await {
-            Ok(_) => {
-                return HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body("WOWIE");
-            },
-            Err(_) => {
-                return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).append_header(header::ContentType::plaintext()).body("FUCKED");
-            }
-        };
+        return healthz_handler(data).await;
     }).await
 }
 
@@ -238,13 +242,17 @@ async fn healthz(data: web::Data<AppState>) -> HttpResponse {
 #[cfg(not(feature = "tracing"))]
 #[get("/healthz")]
 async fn healthz(data: web::Data<AppState>) -> HttpResponse {
+    return healthz_handler(data).await;
+}
+
+async fn healthz_handler(data: web::Data<AppState>) -> HttpResponse {
     let mut rc = data.redis_connection.clone();
     let () = match redis::cmd("PING").query_async::<redis::aio::MultiplexedConnection, ()>(&mut rc).await {
         Ok(_) => {
             return HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body("OK");
         },
         Err(_) => {
-            return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).append_header(header::ContentType::plaintext()).body("FUCKED");
+            return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).append_header(header::ContentType::plaintext()).body("OOF");
         }
     };
 }
