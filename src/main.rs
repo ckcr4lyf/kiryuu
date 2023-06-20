@@ -2,6 +2,7 @@ mod byte_functions;
 mod query;
 mod constants;
 mod req_log;
+mod redis_wrapper;
 
 use actix_web::{get, App, HttpServer, web, HttpRequest, HttpResponse, http::header, http::StatusCode, dev::Service};
 use std::{time::{SystemTime, UNIX_EPOCH}};
@@ -59,7 +60,7 @@ impl redis::FromRedisValue for Exists {
 #[get("/announce")]
 async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {    
     let tracer = global::tracer("announce");
-    tracer.in_span("index", |ctx| async move {
+    tracer.in_span("announce", |ctx| async move {
         ctx.span().set_attribute(Key::new("parameter").i64(10));
         let time_now = SystemTime::now().duration_since(UNIX_EPOCH).expect("fucked up");
         let time_now_ms: i64 = i64::try_from(time_now.as_millis()).expect("fucc");
@@ -228,16 +229,13 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     }).await
 }
 
-async fn healthz_handler(data: web::Data<AppState>) -> HttpResponse {
+#[get("/healthz")]
+async fn healthz(data: web::Data<AppState>) -> HttpResponse {
     let mut rc = data.redis_connection.clone();
-    let () = match redis::cmd("PING").query_async::<redis::aio::MultiplexedConnection, ()>(&mut rc).await {
-        Ok(_) => {
-            return HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body("OK");
-        },
-        Err(_) => {
-            return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).append_header(header::ContentType::plaintext()).body("OOF");
-        }
-    };
+    match redis_wrapper::healthcheck(&mut rc).await {
+        true => HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body("OK"),
+        false => HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).append_header(header::ContentType::plaintext()).body("OOF"),
+    }
 }
 
 struct AppState {
@@ -286,26 +284,22 @@ async fn main() -> std::io::Result<()> {
     return HttpServer::new(move || {
         App::new()
         .app_data(data.clone())
-        .service(web::resource("/healthz")
-            .wrap_fn(|req, srv| {
-                #[cfg(feature = "tracing")]
-                {
-                    let tracer = global::tracer("healthz");
-                    tracer.in_span("healthz", move |cx| {
-                        cx.span()
-                            .set_attribute(Key::new("path").string(req.path().to_string()));
-                        srv.call(req).with_context(cx)
-                    })  
-                }
-                #[cfg(not(feature = "tracing"))]
-                {
-                    srv.call(req)
-                }
-            })
-            .route(web::get().to(move |data| {
-                healthz_handler(data)
-            }))
-        )
+        .wrap_fn(|req, srv| {
+            #[cfg(feature = "tracing")]
+            {
+                let tracer = global::tracer("http");
+                tracer.in_span("http", move |cx| {
+                    cx.span()
+                        .set_attribute(Key::new("path").string(req.path().to_string()));
+                    srv.call(req).with_context(cx)
+                })  
+            }
+            #[cfg(not(feature = "tracing"))]
+            {
+                srv.call(req)
+            }
+        })
+        .service(healthz)
         .service(announce)
     })
     .bind((host, port))?
