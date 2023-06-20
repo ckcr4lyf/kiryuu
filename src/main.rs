@@ -228,23 +228,6 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     }).await
 }
 
-#[cfg(feature = "tracing")]
-#[get("/healthz")]
-async fn healthz(data: web::Data<AppState>) -> HttpResponse {
-    let tracer = global::tracer("healthz");
-    tracer.in_span("index", |ctx| async move {
-        ctx.span().set_attribute(Key::new("parameter").i64(10));
-        return healthz_handler(data).await;
-    }).await
-}
-
-
-#[cfg(not(feature = "tracing"))]
-#[get("/healthz")]
-async fn healthz(data: web::Data<AppState>) -> HttpResponse {
-    return healthz_handler(data).await;
-}
-
 async fn healthz_handler(data: web::Data<AppState>) -> HttpResponse {
     let mut rc = data.redis_connection.clone();
     let () = match redis::cmd("PING").query_async::<redis::aio::MultiplexedConnection, ()>(&mut rc).await {
@@ -303,15 +286,26 @@ async fn main() -> std::io::Result<()> {
     return HttpServer::new(move || {
         App::new()
         .app_data(data.clone())
-        .wrap_fn(|req, srv| {
-            let tracer = global::tracer("request");
-            tracer.in_span("middleware", move |cx| {
-                cx.span()
-                    .set_attribute(Key::new("path").string(req.path().to_string()));
-                srv.call(req).with_context(cx)
+        .service(web::resource("/healthz")
+            .wrap_fn(|req, srv| {
+                #[cfg(feature = "tracing")]
+                {
+                    let tracer = global::tracer("healthz");
+                    tracer.in_span("healthz", move |cx| {
+                        cx.span()
+                            .set_attribute(Key::new("path").string(req.path().to_string()));
+                        srv.call(req).with_context(cx)
+                    })  
+                }
+                #[cfg(not(feature = "tracing"))]
+                {
+                    srv.call(req)
+                }
             })
-        })
-        .service(healthz)
+            .route(web::get().to(move |data| {
+                healthz_handler(data)
+            }))
+        )
         .service(announce)
     })
     .bind((host, port))?
