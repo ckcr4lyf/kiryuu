@@ -94,12 +94,18 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         let mut rc = data.redis_connection.clone();
         let (seeders_key, leechers_key, cache_key) = byte_functions::make_redis_keys(&parsed.info_hash);
 
+        let mut p = redis::pipe();
+        let pp = p.cmd("ZSCORE").arg(&seeders_key).arg(&parsed.ip_port)
+        .cmd("ZSCORE").arg(&leechers_key).arg(&parsed.ip_port)
+        .cmd("GET").arg(&cache_key);
         
-        let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = redis::pipe()
-            .cmd("ZSCORE").arg(&seeders_key).arg(&parsed.ip_port)
-            .cmd("ZSCORE").arg(&leechers_key).arg(&parsed.ip_port)
-            .cmd("GET").arg(&cache_key)
-            .query_async(&mut rc).await.unwrap();
+        let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = redis_wrapper::execute_pipeline(pp, &mut rc).await.unwrap();
+
+        // let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = redis::pipe()
+        //     .cmd("ZSCORE").arg(&seeders_key).arg(&parsed.ip_port)
+        //     .cmd("ZSCORE").arg(&leechers_key).arg(&parsed.ip_port)
+        //     .cmd("GET").arg(&cache_key)
+        //     .query_async(&mut rc).await.unwrap();
 
         ctx.span().add_event("Got initial response from redis", vec![Key::new("is_seeder").bool(&is_seeder_v2), Key::new("is_leecher").bool(&is_leecher_v2)]);
 
