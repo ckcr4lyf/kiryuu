@@ -3,9 +3,13 @@ mod query;
 mod constants;
 mod req_log;
 
-use actix_web::{get, App, HttpServer, web, HttpRequest, HttpResponse, http::header, http::StatusCode};
+use actix_web::{get, App, HttpServer, web, HttpRequest, HttpResponse, http::header, http::StatusCode, dev::Service};
 use std::{time::{SystemTime, UNIX_EPOCH}};
 use clap::Parser;
+
+use opentelemetry::{global, sdk::trace as sdktrace, trace::{TraceContextExt, FutureExt}, Key};
+use opentelemetry::trace::TraceError;
+use opentelemetry::trace::Tracer;
 
 /// Simple
 #[derive(Parser, Debug)]
@@ -210,24 +214,52 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 
 #[get("/healthz")]
 async fn healthz(data: web::Data<AppState>) -> HttpResponse {
-    let mut rc = data.redis_connection.clone();
-    let () = match redis::cmd("PING").query_async::<redis::aio::MultiplexedConnection, ()>(&mut rc).await {
-        Ok(_) => {
-            return HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body("OK");
-        },
-        Err(_) => {
-            return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).append_header(header::ContentType::plaintext()).body("FUCKED");
-        }
-    };
+    let tracer = global::tracer("healthz");
+    tracer.in_span("index", |ctx| async move {
+        ctx.span().set_attribute(Key::new("parameter").i64(10));
+        let mut rc = data.redis_connection.clone();
+        let () = match redis::cmd("PING").query_async::<redis::aio::MultiplexedConnection, ()>(&mut rc).await {
+            Ok(_) => {
+                return HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body("OK");
+            },
+            Err(_) => {
+                return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).append_header(header::ContentType::plaintext()).body("FUCKED");
+            }
+        };
+    }).await
 }
 
 struct AppState {
     redis_connection: redis::aio::MultiplexedConnection,
 }
 
+
+fn init_tracer() -> Result<sdktrace::Tracer, TraceError> {
+    opentelemetry_jaeger::new_agent_pipeline()
+        .with_endpoint("localhost:6831")
+        .with_service_name("kiryuu")
+        .with_trace_config(opentelemetry::sdk::trace::config().with_resource(
+            opentelemetry::sdk::Resource::new(vec![
+                opentelemetry::KeyValue::new("service.name", "my-service"), // this will not override the trace-udp-demo
+                opentelemetry::KeyValue::new("service.namespace", "my-namespace"),
+                opentelemetry::KeyValue::new("exporter", "jaeger"),
+            ]),
+        ))
+        .install_simple()
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let args = Args::parse();
+
+    // global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
+    // let tracer = opentelemetry_jaeger::new_agent_pipeline().install_simple().expect("fuck");
+
+    // tracer.in_span("doing_work", |cx| {
+    //     println!("XD XD");
+    // });
+
+    let _tracer = init_tracer().expect("Failed to initialise tracer.");
 
     let redis_host = args.redis_host.unwrap_or_else(|| "127.0.0.1:6379".to_string());
     let redis = redis::Client::open("redis://".to_string() + &redis_host).unwrap();
@@ -243,6 +275,14 @@ async fn main() -> std::io::Result<()> {
     return HttpServer::new(move || {
         App::new()
         .app_data(data.clone())
+        .wrap_fn(|req, srv| {
+            let tracer = global::tracer("request");
+            tracer.in_span("middleware", move |cx| {
+                cx.span()
+                    .set_attribute(Key::new("path").string(req.path().to_string()));
+                srv.call(req).with_context(cx)
+            })
+        })
         .service(healthz)
         .service(announce)
     })
