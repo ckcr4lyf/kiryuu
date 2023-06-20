@@ -8,9 +8,8 @@ use actix_web::{get, App, HttpServer, web, HttpRequest, HttpResponse, http::head
 use std::{time::{SystemTime, UNIX_EPOCH}};
 use clap::Parser;
 
-use opentelemetry::{global, sdk::trace as sdktrace, trace::{TraceContextExt, FutureExt}, Key};
-use opentelemetry::trace::TraceError;
-use opentelemetry::trace::Tracer;
+#[cfg(feature = "tracing")]
+use opentelemetry::{global, sdk::trace as sdktrace, trace::{TraceContextExt, FutureExt, TraceError, Tracer}, Key};
 
 /// Simple
 #[derive(Parser, Debug)]
@@ -242,6 +241,7 @@ struct AppState {
 }
 
 
+#[cfg(feature = "tracing")]
 fn init_tracer() -> Result<sdktrace::Tracer, TraceError> {
     opentelemetry_jaeger::new_agent_pipeline()
         .with_endpoint("localhost:6831")
@@ -260,14 +260,10 @@ fn init_tracer() -> Result<sdktrace::Tracer, TraceError> {
 async fn main() -> std::io::Result<()> {
     let args = Args::parse();
 
-    // global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
-    // let tracer = opentelemetry_jaeger::new_agent_pipeline().install_simple().expect("fuck");
-
-    // tracer.in_span("doing_work", |cx| {
-    //     println!("XD XD");
-    // });
-
-    let _tracer = init_tracer().expect("Failed to initialise tracer.");
+    #[cfg(feature = "tracing")]
+    {
+        let _tracer = init_tracer().expect("Failed to initialise tracer.");
+    }
 
     let redis_host = args.redis_host.unwrap_or_else(|| "127.0.0.1:6379".to_string());
     let redis = redis::Client::open("redis://".to_string() + &redis_host).unwrap();
@@ -290,7 +286,13 @@ async fn main() -> std::io::Result<()> {
                 tracer.in_span(req.path().to_string(), move |cx| {
                     cx.span().set_attribute(Key::new("path").string(req.path().to_string()));
                     cx.span().add_event("starting", vec![]);
-                    srv.call(req).with_context(cx)
+                    let fut = srv.call(req).with_context(cx.clone());
+
+                    async move {
+                        let res = fut.await?;
+                        cx.span().set_attribute(Key::new("status").i64(res.status().as_u16().into()));
+                        Ok(res)
+                    }
                 })  
             }
             #[cfg(not(feature = "tracing"))]

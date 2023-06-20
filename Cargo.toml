@@ -13,11 +13,11 @@ serde_qs = "0.9.1"
 redis = { version = "0.21.5", features = ["aio", "tokio-comp", "connection-manager"] }
 rand = "*"
 clap = { version = "4.0.30", features = ["derive"] }
-opentelemetry = { version = "0.19", features = ["rt-tokio"] }
-opentelemetry-jaeger = { version = "0.18", features = ["rt-tokio"] }
+opentelemetry = { version = "0.19", features = ["rt-tokio"], optional = true }
+opentelemetry-jaeger = { version = "0.18", features = ["rt-tokio"], optional = true }
 
 [features]
-tracing = []
+tracing = ["dep:opentelemetry", "dep:opentelemetry-jaeger"]
 
 [[example]]
 name = "redis_zscore"
