@@ -23,4 +23,15 @@ jobs:
         with:
           name: kiryuu
           path: ./target/debug/kiryuu
+
+  tracing:
+    name: Check tracing
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
+
+      - name: Check w/ tracing
+        run: cargo check --features tracing
+    
           

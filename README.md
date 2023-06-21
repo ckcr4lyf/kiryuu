@@ -48,3 +48,17 @@ $ docker run -e KIRYUU_HOST=http://172.17.0.1:6969 -e REDIS_HOST=redis://172.17.
 ```
 
 (Make sure you've kiryuu running locally and redis as well!)
+
+## Tracing
+
+To build with tracing, enable the tracing feature:
+
+```
+$ RUSTFLAGS="-C target-cpu=native" cargo build --release --features tracing
+```
+
+For local testing, you can run jaeger via:
+
+```sh
+docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 -p14268:14268 jaegertracing/all-in-one:latest
+```
