@@ -9,7 +9,7 @@ use std::{time::{SystemTime, UNIX_EPOCH}};
 use clap::Parser;
 
 #[cfg(feature = "tracing")]
-use opentelemetry::{global, sdk::trace as sdktrace, trace::{TraceContextExt, FutureExt, TraceError, Tracer}, Key};
+use opentelemetry::{global, sdk::trace as sdktrace, trace::{TraceContextExt, FutureExt, TraceError, Tracer, get_active_span}, Key};
 
 /// Simple
 #[derive(Parser, Debug)]
@@ -223,6 +223,13 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             },
         };
     });
+
+    #[cfg(feature = "tracing")]
+    {
+        get_active_span(|span| {
+            span.add_event("finished", vec![]);
+        })
+    }
 
     return HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body(final_res);
 }
