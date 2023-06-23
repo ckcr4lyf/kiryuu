@@ -7,9 +7,11 @@ mod redis_wrapper;
 use actix_web::{get, App, HttpServer, web, HttpRequest, HttpResponse, http::header, http::StatusCode, dev::Service};
 use std::{time::{SystemTime, UNIX_EPOCH}};
 use clap::Parser;
+use std::collections::HashMap;
+use opentelemetry_otlp::WithExportConfig;
 
 #[cfg(feature = "tracing")]
-use opentelemetry::{global, sdk::trace as sdktrace, trace::{TraceContextExt, FutureExt, TraceError, Tracer, get_active_span}, Key};
+use opentelemetry::{global, sdk::trace as sdktrace, trace::{TraceContextExt, FutureExt, TraceError, Tracer, get_active_span}, Key, KeyValue};
 
 /// Simple
 #[derive(Parser, Debug)]
@@ -250,17 +252,38 @@ struct AppState {
 
 #[cfg(feature = "tracing")]
 fn init_tracer() -> Result<sdktrace::Tracer, TraceError> {
-    opentelemetry_jaeger::new_agent_pipeline()
-        .with_endpoint("localhost:6831")
-        .with_service_name("kiryuu")
-        .with_trace_config(opentelemetry::sdk::trace::config().with_resource(
-            opentelemetry::sdk::Resource::new(vec![
-                opentelemetry::KeyValue::new("service.name", "my-service"),
-                opentelemetry::KeyValue::new("service.namespace", "my-namespace"),
-                opentelemetry::KeyValue::new("exporter", "jaeger"),
-            ]),
-        ))
-        .install_simple()
+    // opentelemetry_jaeger::new_agent_pipeline()
+    //     .with_endpoint("localhost:6831")
+    //     .with_service_name("kiryuu")
+    //     .with_trace_config(opentelemetry::sdk::trace::config().with_resource(
+    //         opentelemetry::sdk::Resource::new(vec![
+    //             opentelemetry::KeyValue::new("service.name", "my-service"),
+    //             opentelemetry::KeyValue::new("service.namespace", "my-namespace"),
+    //             opentelemetry::KeyValue::new("exporter", "jaeger"),
+    //         ]),
+    //     ))
+    //     .install_simple()
+    let exporter = opentelemetry_otlp::new_exporter()
+        .http()
+    //   .with_endpoint("https://otelcol.aspecto.io/v1/traces")
+      .with_endpoint("https://otelcol.aspecto.io/v1/traces")
+      .with_headers(HashMap::from([(
+          "Authorization".into(),
+          "TODO: FROM ENV".into(),
+      )]));
+    opentelemetry_otlp::new_pipeline()
+      .tracing()
+      .with_exporter(exporter)
+      .with_trace_config(
+        opentelemetry::sdk::trace::config().with_resource(opentelemetry::sdk::Resource::new(vec![KeyValue::new(
+              "service.name",
+              "XD",
+          ), KeyValue::new(
+            "aspecto.token",
+            "TODO: FROM ENV"
+          )])),
+      )
+      .install_batch(opentelemetry::runtime::Tokio)
 }
 
 #[actix_web::main]
