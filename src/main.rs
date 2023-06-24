@@ -28,7 +28,17 @@ struct Args {
 
     /// Address of redis instance. Default: 127.0.0.1:6379
     #[arg(long)]
-    redis_host: Option<String>
+    redis_host: Option<String>,
+
+    #[cfg(feature = "tracing")]
+    /// Address of jaeger
+    #[arg(long)]
+    jaeger_host: Option<String>,
+
+    #[cfg(feature = "tracing")]
+    /// Token for aspecto.io
+    #[arg(long)]
+    aspecto_token: Option<String>,
 }
 
 // If not more than 31, possible not online
@@ -252,39 +262,43 @@ struct AppState {
 
 
 #[cfg(feature = "tracing")]
-fn init_tracer() -> Result<sdktrace::Tracer, TraceError> {
-    // opentelemetry_jaeger::new_agent_pipeline()
-    //     .with_endpoint("localhost:6831")
-    //     .with_service_name("kiryuu")
-    //     .with_trace_config(opentelemetry::sdk::trace::config().with_resource(
-    //         opentelemetry::sdk::Resource::new(vec![
-    //             opentelemetry::KeyValue::new("service.name", "my-service"),
-    //             opentelemetry::KeyValue::new("service.namespace", "my-namespace"),
-    //             opentelemetry::KeyValue::new("exporter", "jaeger"),
-    //         ]),
-    //     ))
-    //     .install_simple()
-    let exporter = opentelemetry_otlp::new_exporter()
+fn init_tracer(args: &Args) -> Result<sdktrace::Tracer, TraceError> {
+    if let Some(aspecto_token) = &args.aspecto_token {
+        let exporter = opentelemetry_otlp::new_exporter()
         .http()
-    //   .with_endpoint("https://otelcol.aspecto.io/v1/traces")
-      .with_endpoint("https://otelcol.aspecto.io/v1/traces")
-      .with_headers(HashMap::from([(
-          "Authorization".into(),
-          "TODO: FROM ENV".into(),
-      )]));
-    opentelemetry_otlp::new_pipeline()
-      .tracing()
-      .with_exporter(exporter)
-      .with_trace_config(
-        opentelemetry::sdk::trace::config().with_resource(opentelemetry::sdk::Resource::new(vec![KeyValue::new(
-              "service.name",
-              "XD",
-          ), KeyValue::new(
-            "aspecto.token",
-            "TODO: FROM ENV"
-          )])),
-      )
-      .install_batch(opentelemetry::runtime::Tokio)
+        .with_endpoint("https://otelcol.aspecto.io/v1/traces")
+        .with_headers(HashMap::from([(
+            "Authorization".into(),
+            aspecto_token.clone(),
+        )]));
+
+        opentelemetry_otlp::new_pipeline()
+        .tracing()
+        .with_exporter(exporter)
+        .with_trace_config(
+            opentelemetry::sdk::trace::config().with_resource(opentelemetry::sdk::Resource::new(vec![KeyValue::new(
+                "service.name",
+                "kiryuu",
+            ), KeyValue::new(
+                "aspecto.token",
+                "TODO: FROM ENV"
+            )])),
+        )
+        .install_batch(opentelemetry::runtime::Tokio)
+    } else {
+        let jaeger_host = args.jaeger_host.clone().unwrap_or_else(|| String::from("127.0.0.1:6831"));
+        opentelemetry_jaeger::new_agent_pipeline()
+        .with_endpoint(jaeger_host)
+        .with_service_name("kiryuu")
+        .with_trace_config(opentelemetry::sdk::trace::config().with_resource(
+            opentelemetry::sdk::Resource::new(vec![
+                opentelemetry::KeyValue::new("service.name", "my-service"),
+                opentelemetry::KeyValue::new("service.namespace", "my-namespace"),
+                opentelemetry::KeyValue::new("exporter", "jaeger"),
+            ]),
+        ))
+        .install_simple()
+    }
 }
 
 #[actix_web::main]
@@ -293,7 +307,7 @@ async fn main() -> std::io::Result<()> {
 
     #[cfg(feature = "tracing")]
     {
-        let _tracer = init_tracer().expect("Failed to initialise tracer.");
+        let _tracer = init_tracer(&args).expect("Failed to initialise tracer.");
     }
 
     let redis_host = args.redis_host.unwrap_or_else(|| "127.0.0.1:6379".to_string());
