@@ -276,14 +276,12 @@ fn init_tracer(args: &Args) -> Result<sdktrace::Tracer, TraceError> {
         .tracing()
         .with_exporter(exporter)
         .with_trace_config(
-            opentelemetry::sdk::trace::config().with_resource(opentelemetry::sdk::Resource::new(vec![KeyValue::new(
-                "service.name",
-                "kiryuu",
-            ), KeyValue::new(
-                "aspecto.token",
-                "TODO: FROM ENV"
-            )])),
-        )
+            opentelemetry::sdk::trace::config().with_resource(
+                opentelemetry::sdk::Resource::new(vec![
+                    KeyValue::new("service.name", "kiryuu"),
+                    KeyValue::new("aspecto.token", aspecto_token.clone()),
+            ]),
+        ))
         .install_batch(opentelemetry::runtime::Tokio)
     } else {
         let jaeger_host = args.jaeger_host.clone().unwrap_or_else(|| String::from("127.0.0.1:6831"));
