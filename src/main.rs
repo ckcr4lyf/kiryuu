@@ -8,10 +8,11 @@ use actix_web::{get, App, HttpServer, web, HttpRequest, HttpResponse, http::head
 use std::{time::{SystemTime, UNIX_EPOCH}};
 use clap::Parser;
 use std::collections::HashMap;
-use opentelemetry_otlp::WithExportConfig;
 
 #[cfg(feature = "tracing")]
 use opentelemetry::{global, sdk::trace as sdktrace, trace::{TraceContextExt, FutureExt, TraceError, Tracer, get_active_span}, Key, KeyValue};
+#[cfg(feature = "tracing")]
+use opentelemetry_otlp::WithExportConfig;
 
 /// Simple
 #[derive(Parser, Debug)]

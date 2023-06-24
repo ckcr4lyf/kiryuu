@@ -15,10 +15,10 @@ rand = "*"
 clap = { version = "4.0.30", features = ["derive"] }
 opentelemetry = { version = "0.19", features = ["rt-tokio"], optional = true }
 opentelemetry-jaeger = { version = "0.18", features = ["rt-tokio"], optional = true }
-opentelemetry-otlp = { version = "0.12.0", features = ["http-proto", "reqwest-client", "reqwest-rustls"] }
+opentelemetry-otlp = { version = "0.12.0", features = ["http-proto", "reqwest-client", "reqwest-rustls"], optional = true }
 
 [features]
-tracing = ["dep:opentelemetry", "dep:opentelemetry-jaeger"]
+tracing = ["dep:opentelemetry", "dep:opentelemetry-jaeger", "dep:opentelemetry-otlp"]
 
 [[example]]
 name = "redis_zscore"
