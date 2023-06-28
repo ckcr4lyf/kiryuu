@@ -240,7 +240,15 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     #[cfg(feature = "tracing")]
     {
         get_active_span(|span| {
-            span.add_event("finished", vec![]);
+            let infohash = String::from_utf8_lossy(&parsed.info_hash.0).to_string();
+            let ip = match req.peer_addr() {
+                Some(val) => val.to_string(),
+                None => "NO_IP".to_string(),
+            };
+            span.add_event("finished", vec![
+                KeyValue::new("infohash", infohash),
+                KeyValue::new("ip", ip)
+            ]);
         })
     }
 
