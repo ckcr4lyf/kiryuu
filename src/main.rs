@@ -245,10 +245,9 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
                 Some(val) => val.to_string(),
                 None => "NO_IP".to_string(),
             };
-            span.add_event("finished", vec![
-                KeyValue::new("infohash", infohash),
-                KeyValue::new("ip", ip)
-            ]);
+            span.set_attribute(Key::new("infohash").string(infohash));
+            span.set_attribute(Key::new("ip").string(ip));
+            span.add_event("finished", vec![]);
         })
     }
 
