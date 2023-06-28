@@ -340,7 +340,7 @@ async fn main() -> std::io::Result<()> {
 
                     async move {
                         let res = fut.await?;
-                        cx.span().set_attribute(Key::new("status").i64(res.status().as_u16().into()));
+                        cx.span().set_attribute(Key::new("status.code").i64(res.status().as_u16().into()));
                         Ok(res)
                     }
                 })  
