@@ -302,7 +302,7 @@ fn init_tracer(args: &Args) -> Result<sdktrace::Tracer, TraceError> {
                 opentelemetry::KeyValue::new("exporter", "jaeger"),
             ]),
         ))
-        .install_simple()
+        .install_batch(opentelemetry::runtime::Tokio)
     }
 }
 
@@ -356,6 +356,7 @@ async fn main() -> std::io::Result<()> {
     .bind((host, port))?
     .max_connection_rate(8192)
     .keep_alive(None)
+    .client_request_timeout(std::time::Duration::from_millis(1000))
     .run()
     .await;
 }
