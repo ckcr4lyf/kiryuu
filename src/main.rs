@@ -302,6 +302,7 @@ fn init_tracer(args: &Args) -> Result<sdktrace::Tracer, TraceError> {
                 opentelemetry::KeyValue::new("exporter", "jaeger"),
             ]),
         ))
+        .with_auto_split_batch(true)
         .install_batch(opentelemetry::runtime::Tokio)
     }
 }
