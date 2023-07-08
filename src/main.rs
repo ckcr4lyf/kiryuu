@@ -240,6 +240,13 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     #[cfg(feature = "tracing")]
     {
         get_active_span(|span| {
+            let infohash = String::from_utf8_lossy(&parsed.info_hash.0).to_string();
+            let ip = match req.peer_addr() {
+                Some(val) => val.to_string(),
+                None => "NO_IP".to_string(),
+            };
+            span.set_attribute(Key::new("infohash").string(infohash));
+            span.set_attribute(Key::new("ip").string(ip));
             span.add_event("finished", vec![]);
         })
     }
@@ -295,7 +302,8 @@ fn init_tracer(args: &Args) -> Result<sdktrace::Tracer, TraceError> {
                 opentelemetry::KeyValue::new("exporter", "jaeger"),
             ]),
         ))
-        .install_simple()
+        .with_auto_split_batch(true)
+        .install_batch(opentelemetry::runtime::Tokio)
     }
 }
 
@@ -349,6 +357,7 @@ async fn main() -> std::io::Result<()> {
     .bind((host, port))?
     .max_connection_rate(8192)
     .keep_alive(None)
+    .client_request_timeout(std::time::Duration::from_millis(1000))
     .run()
     .await;
 }
