@@ -2,11 +2,9 @@ mod byte_functions;
 mod query;
 mod constants;
 mod req_log;
-mod redis_wrapper;
 
 use actix_web::{get, App, HttpServer, web, HttpRequest, HttpResponse, http::header, http::StatusCode, dev::Service};
-use opentelemetry::trace::Span;
-use std::{time::{SystemTime, UNIX_EPOCH}};
+use std::time::{SystemTime, UNIX_EPOCH};
 use clap::Parser;
 use std::collections::HashMap;
 
@@ -14,7 +12,11 @@ use std::collections::HashMap;
 use opentelemetry::{global, sdk::trace as sdktrace, trace::{TraceContextExt, FutureExt, TraceError, Tracer, get_active_span}, Key, KeyValue};
 #[cfg(feature = "tracing")]
 use opentelemetry_otlp::WithExportConfig;
+#[cfg(feature = "tracing")]
+use opentelemetry::trace::Span;
 
+// This will acutally always be imported, has the feature flag
+// inside the macro.
 mod tracing;
 /// Simple
 #[derive(Parser, Debug)]
@@ -73,11 +75,7 @@ impl redis::FromRedisValue for Exists {
 
 #[get("/announce")]
 async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {    
-
-    // let tracer = global::tracer_provider();
-    // tracer.with_current_context().star
-    
-
+  
     let time_now = SystemTime::now().duration_since(UNIX_EPOCH).expect("fucked up");
     let time_now_ms: i64 = i64::try_from(time_now.as_millis()).expect("fucc");
     let max_limit = time_now_ms - THIRTY_ONE_MINUTES;
@@ -115,27 +113,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     .cmd("ZSCORE").arg(&leechers_key).arg(&parsed.ip_port)
     .cmd("GET").arg(&cache_key);
     
-    // let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = redis_wrapper::execute_pipeline(pp, &mut rc).await.unwrap();
-    // let mut span = tracer.start("NEW_SPAN_1");
-    // span.set_attribute(Key::new("bruv").string("va"));
-    // let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = trace_wrap!(pp.query_async(&mut rc), "XD").await.unwrap();
     let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = trace_wrap_v2!(pp.query_async(&mut rc).await, "redis").unwrap();
-    // span.end();
-    // let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = {
-    //     let tracer = global::tracer("execute_pipeline");
-    //     tracer.in_span("execute_pipeline", |ctx| {
-    //         ctx.span().add_event("Calling redis", vec![]);
-    //         pp.query_async(&mut rc)
-    //     })
-    // }.await.unwrap();
-
-    // let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = redis_wrapper::xd(pp, &mut rc).await.unwrap();
-
-    // let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = redis::pipe()
-    //     .cmd("ZSCORE").arg(&seeders_key).arg(&parsed.ip_port)
-    //     .cmd("ZSCORE").arg(&leechers_key).arg(&parsed.ip_port)
-    //     .cmd("GET").arg(&cache_key)
-    //     .query_async(&mut rc).await.unwrap();
 
     let mut post_announce_pipeline = redis::pipe();
     post_announce_pipeline.cmd("ZADD").arg(constants::TORRENTS_KEY).arg(time_now_ms).arg(&parsed.info_hash).ignore(); // To "update" the torrent
@@ -193,12 +171,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             let pp = p.cmd("ZRANGEBYSCORE").arg(&seeders_key).arg(max_limit).arg(time_now_ms).arg("LIMIT").arg(0).arg(50)
             .cmd("ZRANGEBYSCORE").arg(&leechers_key).arg(max_limit).arg(time_now_ms).arg("LIMIT").arg(0).arg(50);
 
-            // let (seeders, leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = redis_wrapper::execute_pipeline(pp, &mut rc).await.unwrap();
-            // let (seeders, leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = redis_wrapper::execute_pipeline(pp, &mut rc).await.unwrap();
-            // let mut span = tracer.start("NEW_SPAN_1");
-            // span.set_attribute(Key::new("bruv").string("va"));
             let (seeders, leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = trace_wrap_v2!(pp.query_async(&mut rc).await, "redis").unwrap();
-            // span.end();
         
             // endex = end index XD. seems in rust cannot select first 50 elements, or limit to less if vector doesnt have 50
             // e.g. &seeders[0..50] is panicking when seeders len is < 50. Oh well.
