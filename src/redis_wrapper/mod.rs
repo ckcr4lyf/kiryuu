@@ -41,3 +41,34 @@ pub async fn execute_pipeline<T: FromRedisValue>(pipeline: &redis::Pipeline, c: 
     }
 
 }
+
+pub async fn xd<T: FromRedisValue>(pipeline: &redis::Pipeline, c: &mut redis::aio::MultiplexedConnection) -> redis::RedisResult<T> {
+    foo::trace_wrap!(pipeline.query_async(c).await, "LOL")
+}
+
+
+#[macro_use]
+mod foo {
+    macro_rules! trace_wrap {
+        ($expr:expr, $x:literal) => {
+            {
+                #[cfg(feature = "tracing")]
+                {
+                    let tracer = global::tracer($x);
+                    tracer.in_span($x, |ctx| async move {
+                        let result = $expr;
+                        result
+                    }).await
+                }
+    
+                #[cfg(not(feature = "tracing"))]
+                {
+                    let result = $expr;
+                    result
+                }
+            }
+        };
+    }
+
+    pub(crate) use trace_wrap;
+}
