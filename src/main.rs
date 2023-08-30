@@ -74,7 +74,8 @@ impl redis::FromRedisValue for Exists {
 #[get("/announce")]
 async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {    
 
-    let tracer = global::tracer("MY_NEW_TRACER");
+    // let tracer = global::tracer_provider();
+    // tracer.with_current_context().star
     
 
     let time_now = SystemTime::now().duration_since(UNIX_EPOCH).expect("fucked up");
@@ -115,10 +116,11 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     .cmd("GET").arg(&cache_key);
     
     // let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = redis_wrapper::execute_pipeline(pp, &mut rc).await.unwrap();
-    let mut span = tracer.start("NEW_SPAN_1");
-    span.set_attribute(Key::new("bruv").string("va"));
-    let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = trace_wrap!(pp.query_async(&mut rc), "XD").await.unwrap();
-    span.end();
+    // let mut span = tracer.start("NEW_SPAN_1");
+    // span.set_attribute(Key::new("bruv").string("va"));
+    // let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = trace_wrap!(pp.query_async(&mut rc), "XD").await.unwrap();
+    let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = trace_wrap_v2!(pp.query_async(&mut rc).await, "redis").unwrap();
+    // span.end();
     // let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = {
     //     let tracer = global::tracer("execute_pipeline");
     //     tracer.in_span("execute_pipeline", |ctx| {
@@ -193,10 +195,10 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 
             // let (seeders, leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = redis_wrapper::execute_pipeline(pp, &mut rc).await.unwrap();
             // let (seeders, leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = redis_wrapper::execute_pipeline(pp, &mut rc).await.unwrap();
-            let mut span = tracer.start("NEW_SPAN_1");
-            span.set_attribute(Key::new("bruv").string("va"));
-            let (seeders, leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = trace_wrap!(pp.query_async(&mut rc), "XD").await.unwrap();
-            span.end();
+            // let mut span = tracer.start("NEW_SPAN_1");
+            // span.set_attribute(Key::new("bruv").string("va"));
+            let (seeders, leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = trace_wrap_v2!(pp.query_async(&mut rc).await, "redis").unwrap();
+            // span.end();
         
             // endex = end index XD. seems in rust cannot select first 50 elements, or limit to less if vector doesnt have 50
             // e.g. &seeders[0..50] is panicking when seeders len is < 50. Oh well.
@@ -282,9 +284,10 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 #[get("/healthz")]
 async fn healthz(data: web::Data<AppState>) -> HttpResponse {
     let mut rc = data.redis_connection.clone();
-    match redis_wrapper::healthcheck(&mut rc).await {
-        true => HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body("OK"),
-        false => HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).append_header(header::ContentType::plaintext()).body("OOF"),
+
+    match trace_wrap_v2!(redis::cmd("PING").query_async::<_, ()>(&mut rc).await, "redis-hc") {
+        Ok(_) => HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body("OK"),
+        Err(_) => HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).append_header(header::ContentType::plaintext()).body("OOF"),
     }
 }
 
@@ -319,7 +322,7 @@ fn init_tracer(args: &Args) -> Result<sdktrace::Tracer, TraceError> {
         let jaeger_host = args.jaeger_host.clone().unwrap_or_else(|| String::from("127.0.0.1:6831"));
         opentelemetry_jaeger::new_agent_pipeline()
         .with_endpoint(jaeger_host)
-        .with_service_name("kiryuu")
+        .with_service_name("Kiryuu")
         .with_trace_config(opentelemetry::sdk::trace::config().with_resource(
             opentelemetry::sdk::Resource::new(vec![
                 opentelemetry::KeyValue::new("service.name", "my-service"),
