@@ -5,6 +5,7 @@ mod req_log;
 mod redis_wrapper;
 
 use actix_web::{get, App, HttpServer, web, HttpRequest, HttpResponse, http::header, http::StatusCode, dev::Service};
+use opentelemetry::trace::Span;
 use std::{time::{SystemTime, UNIX_EPOCH}};
 use clap::Parser;
 use std::collections::HashMap;
@@ -72,6 +73,10 @@ impl redis::FromRedisValue for Exists {
 
 #[get("/announce")]
 async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {    
+
+    let tracer = global::tracer("MY_NEW_TRACER");
+    
+
     let time_now = SystemTime::now().duration_since(UNIX_EPOCH).expect("fucked up");
     let time_now_ms: i64 = i64::try_from(time_now.as_millis()).expect("fucc");
     let max_limit = time_now_ms - THIRTY_ONE_MINUTES;
@@ -110,7 +115,10 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     .cmd("GET").arg(&cache_key);
     
     // let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = redis_wrapper::execute_pipeline(pp, &mut rc).await.unwrap();
+    let mut span = tracer.start("NEW_SPAN_1");
+    span.set_attribute(Key::new("bruv").string("va"));
     let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = trace_wrap!(pp.query_async(&mut rc), "XD").await.unwrap();
+    span.end();
     // let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = {
     //     let tracer = global::tracer("execute_pipeline");
     //     tracer.in_span("execute_pipeline", |ctx| {
@@ -182,7 +190,13 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             let mut p = redis::pipe();
             let pp = p.cmd("ZRANGEBYSCORE").arg(&seeders_key).arg(max_limit).arg(time_now_ms).arg("LIMIT").arg(0).arg(50)
             .cmd("ZRANGEBYSCORE").arg(&leechers_key).arg(max_limit).arg(time_now_ms).arg("LIMIT").arg(0).arg(50);
-            let (seeders, leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = redis_wrapper::execute_pipeline(pp, &mut rc).await.unwrap();
+
+            // let (seeders, leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = redis_wrapper::execute_pipeline(pp, &mut rc).await.unwrap();
+            // let (seeders, leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = redis_wrapper::execute_pipeline(pp, &mut rc).await.unwrap();
+            let mut span = tracer.start("NEW_SPAN_1");
+            span.set_attribute(Key::new("bruv").string("va"));
+            let (seeders, leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = trace_wrap!(pp.query_async(&mut rc), "XD").await.unwrap();
+            span.end();
         
             // endex = end index XD. seems in rust cannot select first 50 elements, or limit to less if vector doesnt have 50
             // e.g. &seeders[0..50] is panicking when seeders len is < 50. Oh well.
