@@ -14,6 +14,7 @@ use opentelemetry::{global, sdk::trace as sdktrace, trace::{TraceContextExt, Fut
 #[cfg(feature = "tracing")]
 use opentelemetry_otlp::WithExportConfig;
 
+mod tracing;
 /// Simple
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -108,7 +109,17 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     .cmd("ZSCORE").arg(&leechers_key).arg(&parsed.ip_port)
     .cmd("GET").arg(&cache_key);
     
-    let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = redis_wrapper::execute_pipeline(pp, &mut rc).await.unwrap();
+    // let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = redis_wrapper::execute_pipeline(pp, &mut rc).await.unwrap();
+    let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = trace_wrap!(pp.query_async(&mut rc), "XD").await.unwrap();
+    // let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = {
+    //     let tracer = global::tracer("execute_pipeline");
+    //     tracer.in_span("execute_pipeline", |ctx| {
+    //         ctx.span().add_event("Calling redis", vec![]);
+    //         pp.query_async(&mut rc)
+    //     })
+    // }.await.unwrap();
+
+    // let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = redis_wrapper::xd(pp, &mut rc).await.unwrap();
 
     // let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = redis::pipe()
     //     .cmd("ZSCORE").arg(&seeders_key).arg(&parsed.ip_port)
