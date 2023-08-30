@@ -2,10 +2,9 @@ mod byte_functions;
 mod query;
 mod constants;
 mod req_log;
-mod redis_wrapper;
 
 use actix_web::{get, App, HttpServer, web, HttpRequest, HttpResponse, http::header, http::StatusCode, dev::Service};
-use std::{time::{SystemTime, UNIX_EPOCH}};
+use std::time::{SystemTime, UNIX_EPOCH};
 use clap::Parser;
 use std::collections::HashMap;
 
@@ -13,7 +12,12 @@ use std::collections::HashMap;
 use opentelemetry::{global, sdk::trace as sdktrace, trace::{TraceContextExt, FutureExt, TraceError, Tracer, get_active_span}, Key, KeyValue};
 #[cfg(feature = "tracing")]
 use opentelemetry_otlp::WithExportConfig;
+#[cfg(feature = "tracing")]
+use opentelemetry::trace::Span;
 
+// This will acutally always be imported, has the feature flag
+// inside the macro.
+mod tracing;
 /// Simple
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -71,6 +75,7 @@ impl redis::FromRedisValue for Exists {
 
 #[get("/announce")]
 async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {    
+  
     let time_now = SystemTime::now().duration_since(UNIX_EPOCH).expect("fucked up");
     let time_now_ms: i64 = i64::try_from(time_now.as_millis()).expect("fucc");
     let max_limit = time_now_ms - THIRTY_ONE_MINUTES;
@@ -108,13 +113,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     .cmd("ZSCORE").arg(&leechers_key).arg(&parsed.ip_port)
     .cmd("GET").arg(&cache_key);
     
-    let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = redis_wrapper::execute_pipeline(pp, &mut rc).await.unwrap();
-
-    // let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = redis::pipe()
-    //     .cmd("ZSCORE").arg(&seeders_key).arg(&parsed.ip_port)
-    //     .cmd("ZSCORE").arg(&leechers_key).arg(&parsed.ip_port)
-    //     .cmd("GET").arg(&cache_key)
-    //     .query_async(&mut rc).await.unwrap();
+    let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = trace_wrap_v2!(pp.query_async(&mut rc).await, "redis").unwrap();
 
     let mut post_announce_pipeline = redis::pipe();
     post_announce_pipeline.cmd("ZADD").arg(constants::TORRENTS_KEY).arg(time_now_ms).arg(&parsed.info_hash).ignore(); // To "update" the torrent
@@ -171,7 +170,8 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             let mut p = redis::pipe();
             let pp = p.cmd("ZRANGEBYSCORE").arg(&seeders_key).arg(max_limit).arg(time_now_ms).arg("LIMIT").arg(0).arg(50)
             .cmd("ZRANGEBYSCORE").arg(&leechers_key).arg(max_limit).arg(time_now_ms).arg("LIMIT").arg(0).arg(50);
-            let (seeders, leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = redis_wrapper::execute_pipeline(pp, &mut rc).await.unwrap();
+
+            let (seeders, leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = trace_wrap_v2!(pp.query_async(&mut rc).await, "redis").unwrap();
         
             // endex = end index XD. seems in rust cannot select first 50 elements, or limit to less if vector doesnt have 50
             // e.g. &seeders[0..50] is panicking when seeders len is < 50. Oh well.
@@ -257,9 +257,10 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 #[get("/healthz")]
 async fn healthz(data: web::Data<AppState>) -> HttpResponse {
     let mut rc = data.redis_connection.clone();
-    match redis_wrapper::healthcheck(&mut rc).await {
-        true => HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body("OK"),
-        false => HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).append_header(header::ContentType::plaintext()).body("OOF"),
+
+    match trace_wrap_v2!(redis::cmd("PING").query_async::<_, ()>(&mut rc).await, "redis-hc") {
+        Ok(_) => HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body("OK"),
+        Err(_) => HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).append_header(header::ContentType::plaintext()).body("OOF"),
     }
 }
 
@@ -294,7 +295,7 @@ fn init_tracer(args: &Args) -> Result<sdktrace::Tracer, TraceError> {
         let jaeger_host = args.jaeger_host.clone().unwrap_or_else(|| String::from("127.0.0.1:6831"));
         opentelemetry_jaeger::new_agent_pipeline()
         .with_endpoint(jaeger_host)
-        .with_service_name("kiryuu")
+        .with_service_name("Kiryuu")
         .with_trace_config(opentelemetry::sdk::trace::config().with_resource(
             opentelemetry::sdk::Resource::new(vec![
                 opentelemetry::KeyValue::new("service.name", "my-service"),
