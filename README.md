@@ -62,3 +62,11 @@ For local testing, you can run jaeger via:
 ```sh
 docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 -p14268:14268 jaegertracing/all-in-one:latest
 ```
+
+## Local Development
+
+To try and run kiryuu locally, you need to have redis running. Example via docker:
+
+```
+docker run --name some-redis  -p 6379:6379 -d redis
+```
