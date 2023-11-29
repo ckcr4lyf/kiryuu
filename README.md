@@ -70,3 +70,9 @@ To try and run kiryuu locally, you need to have redis running. Example via docke
 ```
 docker run --name some-redis  -p 6379:6379 -d redis
 ```
+
+Dummy announce:
+
+```
+curl -v "localhost:6969/announce?info_hash=AAAAAAAAAAAAAAAAAAAB&port=3333&left=0"
+```
