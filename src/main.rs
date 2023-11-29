@@ -116,19 +116,6 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = trace_wrap_v2!(pp.query_async(&mut rc).await, "redis").unwrap();
 
     let mut post_announce_pipeline = redis::pipe();
-    post_announce_pipeline.cmd("ZADD").arg(constants::TORRENTS_KEY).arg(time_now_ms).arg(&parsed.info_hash).ignore(); // To "update" the torrent
-
-    // The future to "update" the torrent in Postgres
-    let x = data.postgres_client.query("INSERT INTO torrents VALUES($1, $2) ON CONFLICT (infohash) DO UPDATE SET last_announce = EXCLUDED.last_announce;", &[&parsed.info_hash.0, &time_now_ms]).await;
-
-    match x {
-        Err(e) => {
-            eprintln!("fucked up {}", e);
-        },
-        Ok(gg) => {
-            println!("We gucci {:?}", gg);
-        }
-    }
 
     // These will contain how we change the total number of seeders / leechers by the end of the announce
     let mut seed_count_mod: i64 = 0;
@@ -239,6 +226,15 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         // in future can enable via compilation feature
         // post_announce_pipeline.cmd("PUBLISH").arg("reqlog").arg(req_log::generate_csv(&user_ip_owned, &parsed.info_hash)).ignore();
 
+        // The future to "update" the torrent in Postgres
+        let x = data.postgres_client.query("INSERT INTO torrents VALUES($1, $2) ON CONFLICT (infohash) DO UPDATE SET last_announce = EXCLUDED.last_announce;", &[&parsed.info_hash.0, &time_now_ms]).await;
+
+        match x {
+            Err(e) => {
+                eprintln!("fucked up {}", e);
+            },
+            Ok(_) => {}
+        };
 
         let () = match post_announce_pipeline.query_async::<redis::aio::MultiplexedConnection, ()>(&mut rc).await {
             Ok(_) => (),
