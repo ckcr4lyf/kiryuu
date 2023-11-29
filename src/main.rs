@@ -118,6 +118,18 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     let mut post_announce_pipeline = redis::pipe();
     post_announce_pipeline.cmd("ZADD").arg(constants::TORRENTS_KEY).arg(time_now_ms).arg(&parsed.info_hash).ignore(); // To "update" the torrent
 
+    // The future to "update" the torrent in Postgres
+    let x = data.postgres_client.query("INSERT INTO torrents VALUES($1, $2) ON CONFLICT (infohash) DO UPDATE SET last_announce = EXCLUDED.last_announce;", &[&parsed.info_hash, &time_now_ms]).await;
+
+    match x {
+        Err(e) => {
+            eprintln!("fucked up {}", e);
+        },
+        Ok(gg) => {
+            println!("We gucci {:?}", gg);
+        }
+    }
+
     // These will contain how we change the total number of seeders / leechers by the end of the announce
     let mut seed_count_mod: i64 = 0;
     let mut leech_count_mod: i64 = 0;
@@ -266,6 +278,7 @@ async fn healthz(data: web::Data<AppState>) -> HttpResponse {
 
 struct AppState {
     redis_connection: redis::aio::MultiplexedConnection,
+    postgres_client: tokio_postgres::Client,
 }
 
 
@@ -321,8 +334,18 @@ async fn main() -> std::io::Result<()> {
     let redis = redis::Client::open("redis://".to_string() + &redis_host).unwrap();
     let redis_connection = redis.get_multiplexed_tokio_connection().await.unwrap();
 
+    let (client, connection) = tokio_postgres::connect("host=localhost user=postgres password=password", tokio_postgres::NoTls).await.unwrap();
+
+    // Spawn off connection into its own guy
+    actix_web::rt::spawn(async move {
+        if let Err(e) = connection.await {
+            eprintln!("connection error: {}", e);
+        }
+    });
+
     let data = web::Data::new(AppState{
         redis_connection,
+        postgres_client: client,
     });
 
     let port = args.port.unwrap_or_else(|| 6969);

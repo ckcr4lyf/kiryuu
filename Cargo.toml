@@ -16,7 +16,7 @@ clap = { version = "4.0.30", features = ["derive"] }
 opentelemetry = { version = "0.19", features = ["rt-tokio"], optional = true }
 opentelemetry-jaeger = { version = "0.18", features = ["rt-tokio"], optional = true }
 opentelemetry-otlp = { version = "0.12.0", features = ["http-proto", "reqwest-client", "reqwest-rustls"], optional = true }
-tokio-postgres = "0.7.10"
+tokio-postgres = { version = "0.7.10", features = ["array-impls"] }
 tokio = { version = "1.34.0", features = ["rt", "macros"] }
 
 [features]
