@@ -68,7 +68,19 @@ docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 -p14268:14268 jaeger
 To try and run kiryuu locally, you need to have redis running. Example via docker:
 
 ```
-docker run --name some-redis  -p 6379:6379 -d redis
+docker run --name some-redis -p 6379:6379 -d redis
+```
+
+To run Postgres in docker:
+
+```
+docker run --name some-postgres -p 5432:5432 -e POSTGRES_PASSWORD=password -d postgres
+```
+
+And to have psql to play around in it:
+
+```
+docker run --network="host" -it --rm postgres psql -h 127.0.0.1  -U postgres
 ```
 
 Dummy announce:
