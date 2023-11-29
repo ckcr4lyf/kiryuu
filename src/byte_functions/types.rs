@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::{error::Error, str::from_utf8_unchecked};
 
 use actix_web::web::BytesMut;
 use tokio_postgres::types::{Type, IsNull, to_sql_checked, accepts};
@@ -12,7 +12,7 @@ pub struct RawVal<const T: usize>(pub [u8; T]);
 
 impl<const T: usize> tokio_postgres::types::ToSql for RawVal<T> {
     fn to_sql(&self, ty: &Type, w: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
-        <[u8; T] as tokio_postgres::types::ToSql>::to_sql(&self.0, ty, w)
+        unsafe { <&str as tokio_postgres::types::ToSql>::to_sql(&from_utf8_unchecked(&self.0), ty, w) }
     }
 
     accepts!(BYTEA);

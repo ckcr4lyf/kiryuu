@@ -119,7 +119,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     post_announce_pipeline.cmd("ZADD").arg(constants::TORRENTS_KEY).arg(time_now_ms).arg(&parsed.info_hash).ignore(); // To "update" the torrent
 
     // The future to "update" the torrent in Postgres
-    let x = data.postgres_client.query("INSERT INTO torrents VALUES($1, $2) ON CONFLICT (infohash) DO UPDATE SET last_announce = EXCLUDED.last_announce;", &[&parsed.info_hash, &time_now_ms]).await;
+    let x = data.postgres_client.query("INSERT INTO torrents VALUES($1, $2) ON CONFLICT (infohash) DO UPDATE SET last_announce = EXCLUDED.last_announce;", &[&parsed.info_hash.0, &time_now_ms]).await;
 
     match x {
         Err(e) => {
