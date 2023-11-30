@@ -12,3 +12,9 @@ CREATE TABLE torrents (
 CREATE INDEX last_announce_idx ON torrents(last_announce);
 CREATE INDEX announce_count_idx ON torrents(count);
 ```
+
+## Query to get most announced torrents
+
+```
+SELECT encode(infohash, 'escape'), count FROM torrents ORDER BY count DESC LIMIT 10;
+```
