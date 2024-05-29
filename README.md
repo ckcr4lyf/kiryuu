@@ -49,6 +49,14 @@ $ docker run -e KIRYUU_HOST=http://172.17.0.1:6969 -e REDIS_HOST=redis://172.17.
 
 (Make sure you've kiryuu running locally and redis as well!)
 
+### Dummy cURL
+
+Or you can just send an example cURL 
+
+```
+curl "localhost:6969/announce?info_hash=AAAAAAAAAAAAAAAAAAAA&port=1337&left=0" 
+```
+
 ## Tracing
 
 To build with tracing, enable the tracing feature:
