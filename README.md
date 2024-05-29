@@ -68,5 +68,5 @@ $ RUSTFLAGS="-C target-cpu=native" cargo build --release --features tracing
 For local testing, you can run jaeger via:
 
 ```sh
-docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 -p14268:14268 jaegertracing/all-in-one:latest
+docker run -d -p127.0.0.1:6831:6831/udp -p127.0.0.1:6832:6832/udp -p127.0.0.1:16686:16686 -p127.0.0.1:14268:14268 jaegertracing/all-in-one:latest
 ```
