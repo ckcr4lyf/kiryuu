@@ -241,12 +241,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     {
         get_active_span(|span| {
             let infohash = String::from_utf8_lossy(&parsed.info_hash.0).to_string();
-            let ip = match req.peer_addr() {
-                Some(val) => val.to_string(),
-                None => "NO_IP".to_string(),
-            };
             span.set_attribute(Key::new("infohash").string(infohash));
-            span.set_attribute(Key::new("ip").string(ip));
             span.add_event("finished", vec![]);
         })
     }
@@ -298,9 +293,9 @@ fn init_tracer(args: &Args) -> Result<sdktrace::Tracer, TraceError> {
         .with_service_name("Kiryuu")
         .with_trace_config(opentelemetry::sdk::trace::config().with_resource(
             opentelemetry::sdk::Resource::new(vec![
-                opentelemetry::KeyValue::new("service.name", "my-service"),
-                opentelemetry::KeyValue::new("service.namespace", "my-namespace"),
-                opentelemetry::KeyValue::new("exporter", "jaeger"),
+                // opentelemetry::KeyValue::new("service.name", "my-service"),
+                // opentelemetry::KeyValue::new("service.namespace", "my-namespace"),
+                // opentelemetry::KeyValue::new("exporter", "jaeger"),
             ]),
         ))
         .with_auto_split_batch(true)
@@ -337,6 +332,10 @@ async fn main() -> std::io::Result<()> {
                 let tracer = global::tracer("http");
                 tracer.in_span(req.path().to_string(), move |cx| {
                     cx.span().set_attribute(Key::new("path").string(req.path().to_string()));
+                    match req.peer_addr() {
+                        Some(val) => cx.span().set_attribute(Key::new("ip").string(val.to_string())),
+                        None => ()
+                    };                    
                     cx.span().add_event("starting", vec![]);
                     let fut = srv.call(req).with_context(cx.clone());
 
