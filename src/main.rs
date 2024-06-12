@@ -6,8 +6,9 @@ mod req_log;
 use actix_web::{get, App, HttpServer, web, HttpRequest, HttpResponse, http::header, http::StatusCode, dev::Service};
 use std::time::{SystemTime, UNIX_EPOCH};
 use clap::Parser;
-use std::collections::HashMap;
 
+#[cfg(feature = "tracing")]
+use std::collections::HashMap;
 #[cfg(feature = "tracing")]
 use opentelemetry::{global, sdk::trace as sdktrace, trace::{TraceContextExt, FutureExt, TraceError, Tracer, get_active_span}, Key, KeyValue};
 #[cfg(feature = "tracing")]

@@ -1,7 +1,7 @@
-use std::{error::Error, str::from_utf8_unchecked};
+use std::error::Error;
 
-use actix_web::web::BytesMut;
-use tokio_postgres::types::{Type, IsNull, to_sql_checked, accepts};
+use actix_web::web::{BufMut, BytesMut};
+use tokio_postgres::types::{accepts, to_sql_checked, IsNull, Type};
 
 // Define a struct to wrap [u8; _] values
 // So we can implement redis::ToRedisArgs on them
@@ -11,8 +11,9 @@ pub struct RawVal<const T: usize>(pub [u8; T]);
 
 
 impl<const T: usize> tokio_postgres::types::ToSql for RawVal<T> {
-    fn to_sql(&self, ty: &Type, w: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
-        unsafe { <&str as tokio_postgres::types::ToSql>::to_sql(&from_utf8_unchecked(&self.0), ty, w) }
+    fn to_sql(&self, _ty: &Type, w: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
+        w.put_slice(&self.0);
+        Ok(IsNull::No)
     }
 
     accepts!(BYTEA);
