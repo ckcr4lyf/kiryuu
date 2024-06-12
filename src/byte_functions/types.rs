@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use actix_web::web::{BufMut, BytesMut};
-use tokio_postgres::types::{accepts, to_sql_checked, IsNull, Type};
+use tokio_postgres::{types::{accepts, to_sql_checked, IsNull, Type}};
 
 // Define a struct to wrap [u8; _] values
 // So we can implement redis::ToRedisArgs on them
@@ -19,6 +19,19 @@ impl<const T: usize> tokio_postgres::types::ToSql for RawVal<T> {
     accepts!(BYTEA);
 
     to_sql_checked!();
+}
+
+impl<'a, const T: usize> tokio_postgres::types::FromSql<'a> for RawVal<T> {
+    fn from_sql(ty: &Type, raw: &'a [u8]) -> Result<Self, Box<dyn Error + Sync + Send>> {
+        if raw.len() != T {
+            unreachable!()
+        }
+
+        let bytes: [u8; T] = raw.try_into().expect("fuck");
+        Ok(RawVal(bytes))
+    }
+
+    accepts!(BYTEA);
 }
 
 impl<const T: usize> redis::ToRedisArgs for RawVal<T> {

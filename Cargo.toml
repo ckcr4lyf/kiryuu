@@ -18,6 +18,8 @@ opentelemetry-jaeger = { version = "0.18", features = ["rt-tokio"], optional = t
 opentelemetry-otlp = { version = "0.12.0", features = ["http-proto", "reqwest-client", "reqwest-rustls"], optional = true }
 tokio-postgres = { version = "0.7.10", features = ["array-impls"] }
 tokio = { version = "1.34.0", features = ["rt", "macros"] }
+log = "0.4.21"
+env_logger = "0.10.0"
 
 [features]
 tracing = ["dep:opentelemetry", "dep:opentelemetry-jaeger", "dep:opentelemetry-otlp"]
