@@ -292,18 +292,19 @@ fn init_tracer(args: &Args) -> Result<sdktrace::Tracer, TraceError> {
         ))
         .install_batch(opentelemetry::runtime::Tokio)
     } else {
-        let jaeger_host = args.jaeger_host.clone().unwrap_or_else(|| String::from("127.0.0.1:6831"));
-        opentelemetry_jaeger::new_agent_pipeline()
-        .with_endpoint(jaeger_host)
-        .with_service_name("Kiryuu")
+        // let jaeger_host = args.jaeger_host.clone().unwrap_or_else(|| String::from("127.0.0.1:6831"));
+        let otlp_exporter = opentelemetry_otlp::new_exporter().tonic().with_endpoint("http://127.0.0.1:4317");
+
+        opentelemetry_otlp::new_pipeline()
+        .tracing()
+        .with_exporter(otlp_exporter)
         .with_trace_config(opentelemetry::sdk::trace::config().with_resource(
             opentelemetry::sdk::Resource::new(vec![
-                // opentelemetry::KeyValue::new("service.name", "my-service"),
-                // opentelemetry::KeyValue::new("service.namespace", "my-namespace"),
-                // opentelemetry::KeyValue::new("exporter", "jaeger"),
+                opentelemetry::KeyValue::new("service.name", "kiryuu"),
+                opentelemetry::KeyValue::new("service.namespace", "kiryuu-namespace"),
+                opentelemetry::KeyValue::new("exporter", "alloy"),
             ]),
         ))
-        .with_auto_split_batch(true)
         .install_batch(opentelemetry::runtime::Tokio)
     }
 }
