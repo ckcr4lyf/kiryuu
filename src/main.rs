@@ -35,9 +35,9 @@ struct Args {
     redis_host: Option<String>,
 
     #[cfg(feature = "tracing")]
-    /// Address of jaeger
+    /// Address of OTLP consumer. Default: http://127.0.0.1:4317 (Grafana Alloy)
     #[arg(long)]
-    jaeger_host: Option<String>,
+    otlp_endpoint: Option<String>,
 }
 
 // If not more than 31, possible not online
@@ -266,8 +266,8 @@ struct AppState {
 
 #[cfg(feature = "tracing")]
 fn init_tracer(args: &Args) -> Result<sdktrace::Tracer, TraceError> {
-    // let jaeger_host = args.jaeger_host.clone().unwrap_or_else(|| String::from("127.0.0.1:6831"));
-    let otlp_exporter = opentelemetry_otlp::new_exporter().tonic().with_endpoint("http://127.0.0.1:4317");
+    let otlp_endpoint = args.otlp_endpoint.clone().unwrap_or_else(|| String::from("http://127.0.0.1:4317"));
+    let otlp_exporter = opentelemetry_otlp::new_exporter().tonic().with_endpoint(otlp_endpoint);
 
     opentelemetry_otlp::new_pipeline()
     .tracing()
@@ -275,8 +275,8 @@ fn init_tracer(args: &Args) -> Result<sdktrace::Tracer, TraceError> {
     .with_trace_config(opentelemetry::sdk::trace::config().with_resource(
         opentelemetry::sdk::Resource::new(vec![
             opentelemetry::KeyValue::new("service.name", "kiryuu"),
-            opentelemetry::KeyValue::new("service.namespace", "kiryuu-namespace"),
-            opentelemetry::KeyValue::new("exporter", "alloy"),
+            opentelemetry::KeyValue::new("service.namespace", "kiryuu-namespace"), // TBD if this is "good practice"
+            opentelemetry::KeyValue::new("exporter", "alloy"), // TBD if this is "good practice"
         ]),
     ))
     .install_batch(opentelemetry::runtime::Tokio)
