@@ -312,7 +312,7 @@ async fn main() -> std::io::Result<()> {
                 tracer.in_span(req.path().to_string(), move |cx| {
                     cx.span().set_attribute(Key::new("path").string(req.path().to_string()));
                     match req.peer_addr() {
-                        Some(val) => cx.span().set_attribute(Key::new("ip").string(val.to_string())),
+                        Some(val) => cx.span().set_attribute(Key::new("ip").string(val.ip().to_string())),
                         None => ()
                     };                    
                     cx.span().add_event("starting", vec![]);
