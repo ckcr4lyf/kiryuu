@@ -36,14 +36,9 @@ struct Args {
     redis_host: Option<String>,
 
     #[cfg(feature = "tracing")]
-    /// Address of jaeger
+    /// Address of OTLP consumer. Default: http://127.0.0.1:4317 (Grafana Alloy)
     #[arg(long)]
-    jaeger_host: Option<String>,
-
-    #[cfg(feature = "tracing")]
-    /// Token for aspecto.io
-    #[arg(long)]
-    aspecto_token: Option<String>,
+    otlp_endpoint: Option<String>,
 }
 
 // If not more than 31, possible not online
@@ -281,41 +276,20 @@ struct AppState {
 
 #[cfg(feature = "tracing")]
 fn init_tracer(args: &Args) -> Result<sdktrace::Tracer, TraceError> {
-    if let Some(aspecto_token) = &args.aspecto_token {
-        let exporter = opentelemetry_otlp::new_exporter()
-        .http()
-        .with_endpoint("https://otelcol.aspecto.io/v1/traces")
-        .with_headers(HashMap::from([(
-            "Authorization".into(),
-            aspecto_token.clone(),
-        )]));
+    let otlp_endpoint = args.otlp_endpoint.clone().unwrap_or_else(|| String::from("http://127.0.0.1:4317"));
+    let otlp_exporter = opentelemetry_otlp::new_exporter().tonic().with_endpoint(otlp_endpoint);
 
-        opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(exporter)
-        .with_trace_config(
-            opentelemetry::sdk::trace::config().with_resource(
-                opentelemetry::sdk::Resource::new(vec![
-                    KeyValue::new("service.name", "kiryuu"),
-                    KeyValue::new("aspecto.token", aspecto_token.clone()),
-            ]),
-        ))
-        .install_batch(opentelemetry::runtime::Tokio)
-    } else {
-        let jaeger_host = args.jaeger_host.clone().unwrap_or_else(|| String::from("127.0.0.1:6831"));
-        opentelemetry_jaeger::new_agent_pipeline()
-        .with_endpoint(jaeger_host)
-        .with_service_name("Kiryuu")
-        .with_trace_config(opentelemetry::sdk::trace::config().with_resource(
-            opentelemetry::sdk::Resource::new(vec![
-                // opentelemetry::KeyValue::new("service.name", "my-service"),
-                // opentelemetry::KeyValue::new("service.namespace", "my-namespace"),
-                // opentelemetry::KeyValue::new("exporter", "jaeger"),
-            ]),
-        ))
-        .with_auto_split_batch(true)
-        .install_batch(opentelemetry::runtime::Tokio)
-    }
+    opentelemetry_otlp::new_pipeline()
+    .tracing()
+    .with_exporter(otlp_exporter)
+    .with_trace_config(opentelemetry::sdk::trace::config().with_resource(
+        opentelemetry::sdk::Resource::new(vec![
+            opentelemetry::KeyValue::new("service.name", "kiryuu"),
+            opentelemetry::KeyValue::new("service.namespace", "kiryuu-namespace"), // TBD if this is "good practice"
+            opentelemetry::KeyValue::new("exporter", "alloy"), // TBD if this is "good practice"
+        ]),
+    ))
+    .install_batch(opentelemetry::runtime::Tokio)
 }
 
 #[actix_web::main]
@@ -358,7 +332,7 @@ async fn main() -> std::io::Result<()> {
                 tracer.in_span(req.path().to_string(), move |cx| {
                     cx.span().set_attribute(Key::new("path").string(req.path().to_string()));
                     match req.peer_addr() {
-                        Some(val) => cx.span().set_attribute(Key::new("ip").string(val.to_string())),
+                        Some(val) => cx.span().set_attribute(Key::new("ip").string(val.ip().to_string())),
                         None => ()
                     };                    
                     cx.span().add_event("starting", vec![]);
