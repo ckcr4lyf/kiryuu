@@ -19,3 +19,13 @@ CREATE INDEX announce_count_idx ON torrents(count);
 SELECT encode(infohash, 'escape') as infohash, last_announce, count FROM torrents ORDER BY count DESC LIMIT 10;
 SELECT COUNT(*) FROM torrents;
 ```
+
+## Queries to get stale torrents
+
+```
+SELECT COUNT(*) FROM torrents WHERE last_announce < (extract(epoch from now()) * 1000) - 1000 * 60 * 31;
+```
+
+```
+SELECT encode(infohash, 'escape') as infohash, last_announce, count FROM torrents WHERE last_announce < (extract(epoch from now()) * 1000) - 1000 * 60 * 31  ORDER BY count DESC LIMIT 10;
+```
