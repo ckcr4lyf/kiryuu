@@ -16,5 +16,6 @@ CREATE INDEX announce_count_idx ON torrents(count);
 ## Query to get most announced torrents
 
 ```
-SELECT encode(infohash, 'escape'), count FROM torrents ORDER BY count DESC LIMIT 10;
+SELECT encode(infohash, 'escape') as infohash, last_announce, count FROM torrents ORDER BY count DESC LIMIT 10;
+SELECT COUNT(*) FROM torrents;
 ```
