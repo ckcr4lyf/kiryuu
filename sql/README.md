@@ -12,14 +12,15 @@ CREATE TABLE torrents (
 CREATE INDEX last_announce_idx ON torrents(last_announce);
 CREATE INDEX announce_count_idx ON torrents(count);
 
-ALTER TABLE torrents ADD cleaned BOOLEAN DEFAULT FALSE;
+ALTER TABLE torrents ADD cleaned BOOLEAN NOT NULL DEFAULT FALSE;
 ```
 
 ## Query to get most announced torrents
 
 ```
-SELECT encode(infohash, 'escape') as infohash, last_announce, count FROM torrents ORDER BY count DESC LIMIT 10;
+SELECT encode(infohash, 'escape') as infohash, last_announce, count, cleaned FROM torrents ORDER BY count DESC LIMIT 10;
 SELECT COUNT(*) FROM torrents;
+SELECT SUM(count) FROM torrents;
 ```
 
 ## Queries to get stale torrents
@@ -29,5 +30,5 @@ SELECT COUNT(*) FROM torrents WHERE last_announce < (extract(epoch from now()) *
 ```
 
 ```
-SELECT encode(infohash, 'escape') as infohash, last_announce, count FROM torrents WHERE last_announce < (extract(epoch from now()) * 1000) - 1000 * 60 * 31  ORDER BY count DESC LIMIT 10;
+SELECT encode(infohash, 'escape') as infohash, last_announce, count, cleaned FROM torrents WHERE last_announce < (extract(epoch from now()) * 1000) - 1000 * 60 * 31  ORDER BY count DESC LIMIT 10;
 ```
