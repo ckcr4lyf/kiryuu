@@ -11,6 +11,8 @@ CREATE TABLE torrents (
 
 CREATE INDEX last_announce_idx ON torrents(last_announce);
 CREATE INDEX announce_count_idx ON torrents(count);
+
+ALTER TABLE torrents ADD cleaned BOOLEAN DEFAULT FALSE;
 ```
 
 ## Query to get most announced torrents

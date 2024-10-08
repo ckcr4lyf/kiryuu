@@ -34,7 +34,7 @@ async fn main() -> Result<(), Error> {
     let max_limit = time_now_ms - (1000 * 60 * 31);
     // let max_limit = time_now_ms;
 
-    let rows = client.query("SELECT * FROM torrents WHERE last_announce < $1", &[&max_limit]).await?;
+    let rows = client.query("SELECT * FROM torrents WHERE last_announce < $1 AND cleaned = FALSE;", &[&max_limit]).await?;
     info!("Got {} torrents to clean!", rows.len());
 
     for row in rows {
@@ -47,6 +47,9 @@ async fn main() -> Result<(), Error> {
         let (skey, lkey, ckey) = byte_functions::make_redis_keys(&infohash);
         let cmd: bool = redis::cmd("DEL").arg(&skey).arg(&lkey).arg(&ckey).query_async(&mut redis_connection).await.expect("fucc");
         debug!("result of clean {:?}", cmd);
+
+        // We should also set cleaned to true
+        client.query("UPDATE torrents SET cleaned=TRUE WHERE infohash = $1;", &[&infohash.0]).await?;
     }
 
     info!("Finished clean job");

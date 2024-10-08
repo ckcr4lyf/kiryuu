@@ -228,7 +228,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         // post_announce_pipeline.cmd("PUBLISH").arg("reqlog").arg(req_log::generate_csv(&user_ip_owned, &parsed.info_hash)).ignore();
 
         // The future to "update" the torrent in Postgres
-        let x = data.postgres_client.query("INSERT INTO torrents VALUES($1, $2) ON CONFLICT (infohash) DO UPDATE SET last_announce = EXCLUDED.last_announce, count=torrents.count+1;", &[&parsed.info_hash.0, &time_now_ms]).await;
+        let x = data.postgres_client.query("INSERT INTO torrents VALUES($1, $2) ON CONFLICT (infohash) DO UPDATE SET last_announce = EXCLUDED.last_announce, count=torrents.count+1, cleaned=FALSE;", &[&parsed.info_hash.0, &time_now_ms]).await;
 
         match x {
             Err(e) => {
