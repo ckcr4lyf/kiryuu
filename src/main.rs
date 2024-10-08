@@ -334,7 +334,11 @@ async fn main() -> std::io::Result<()> {
                     match req.peer_addr() {
                         Some(val) => cx.span().set_attribute(Key::new("ip").string(val.ip().to_string())),
                         None => ()
-                    };                    
+                    };
+                    match req.headers().get(header::USER_AGENT) {
+                        Some(val) => cx.span().set_attribute(Key::new("user-agent").string(val.to_str().unwrap_or("ERR").to_owned())),
+                        None => cx.span().set_attribute(Key::new("user-agent").string("NA"))
+                    }
                     cx.span().add_event("starting", vec![]);
                     let fut = srv.call(req).with_context(cx.clone());
 
