@@ -20,6 +20,7 @@ ALTER TABLE torrents ADD cleaned BOOLEAN NOT NULL DEFAULT FALSE;
 ```
 SELECT encode(infohash, 'escape') as infohash, last_announce, count, cleaned FROM torrents ORDER BY count DESC LIMIT 10;
 SELECT COUNT(*) FROM torrents;
+SELECT COUNT(*) FROM torrents WHERE  last_announce > (extract(epoch from now()) * 1000) - 1000 * 60 * 31;
 SELECT SUM(count) FROM torrents;
 ```
 
@@ -27,6 +28,8 @@ SELECT SUM(count) FROM torrents;
 
 ```
 SELECT COUNT(*) FROM torrents WHERE last_announce < (extract(epoch from now()) * 1000) - 1000 * 60 * 31;
+SELECT COUNT(*) FROM torrents WHERE  last_announce < (extract(epoch from now()) * 1000) - 1000 * 60 * 31 AND cleaned = TRUE;
+SELECT COUNT(*) FROM torrents WHERE  last_announce < (extract(epoch from now()) * 1000) - 1000 * 60 * 31 AND cleaned = FALSE;
 ```
 
 ```
