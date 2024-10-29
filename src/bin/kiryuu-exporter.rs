@@ -20,18 +20,18 @@ async fn metrics(data: web::Data<AppState>) -> HttpResponse {
     
     let (announce_count, req_duration, cache_hit_count, nochange_count): (i64, i64, i64, i64) = redis::cmd("MGET").arg(constants::ANNOUNCE_COUNT_KEY).arg(constants::REQ_DURATION_KEY).arg(constants::CACHE_HIT_ANNOUNCE_COUNT_KEY).arg(constants::NOCHANGE_ANNOUNCE_COUNT_KEY).query_async(&mut redis_connection).await.expect("fucc");
 
-    let rows = data.postgres_client.query("SELECT COUNT(*) FROM torrents WHERE  last_announce > (extract(epoch from now()) * 1000) - 1000 * 60 * 31;", &[]).await.expect("fucc psql");
+    // counting rows is expensive, takes like 2 seconds
+    // let rows = data.postgres_client.query("SELECT COUNT(*) FROM torrents WHERE  last_announce > (extract(epoch from now()) * 1000) - 1000 * 60 * 31;", &[]).await.expect("fucc psql");
 
-    let active_count: i64 = rows[0].get(0);
+    // let active_count: i64 = rows[0].get(0);
 
     let response = format!(r#"
 kiryuu_http_nochange_request_count{{status_code="200", method="GET", path="announce"}} {}
 kiryuu_http_cache_hit_request_count{{status_code="200", method="GET", path="announce"}} {}
 kiryuu_http_request_count{{status_code="200", method="GET", path="announce"}} {}
 kiryuu_http_request_duration_sum{{status_code="200", method="GET", path="announce"}} {}
-kiryuu_active_torrent_count {}
     
-    "#, nochange_count, cache_hit_count, announce_count, req_duration, active_count);
+    "#, nochange_count, cache_hit_count, announce_count, req_duration);
 
     HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body(response)
 }
