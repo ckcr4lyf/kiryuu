@@ -1,6 +1,6 @@
 use std::{env, time::{SystemTime, UNIX_EPOCH}};
 use kiryuu::byte_functions::{self, types::RawVal};
-use log::{debug, info};
+use log::{debug, error, info};
 use tokio_postgres::{Error, NoTls};
 
 /// cleanup job involves
@@ -8,7 +8,7 @@ use tokio_postgres::{Error, NoTls};
 /// -> Delete their {hash}_seeders, {hash}_leechers ZSET
 /// -> Delete their {hash} HASH
 
-const LIMIT: i64 = 1000;
+const LIMIT: usize = 1000;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Error> {
@@ -47,38 +47,47 @@ async fn main() -> Result<(), Error> {
     // let max_limit = time_now_ms;
 
     let mut offset: i64 = 0;
+    let mut infohashes = Vec::<RawVal<40>>::with_capacity(LIMIT);
 
     loop {
-        let rows = client.query("SELECT * FROM torrents WHERE last_announce < $1 AND cleaned = $2 OFFSET $3 LIMIT $4;", &[&max_limit, &get_cleaned, &offset, &LIMIT]).await?;
-
+        let rows = client.query("SELECT * FROM torrents WHERE last_announce < $1 AND cleaned = $2 OFFSET $3 LIMIT $4;", &[&max_limit, &get_cleaned, &offset, &(LIMIT as i64)]).await?;
         if rows.len() == 0 {
             info!("No more torrents to clean! (Offset = {})", offset);
             break;
         }
 
+        infohashes.clear();
         info!("Got {} torrents to clean! (Offset = {})", rows.len(), offset);
+        let mut pipeline = redis::pipe();
+
         for row in rows {
             let infohash: RawVal<40> = row.get(0);
-            debug!("Going to handle row {}", String::from_utf8(infohash.0.to_vec()).expect("fuck"));
+            // debug!("Going to handle row {}", String::from_utf8(infohash.0.to_vec()).expect("fuck"));
     
             // pipeline to delete keys from redis
             // basically if the TORRENT's last announce is more than 31 minutes ago, we can delete the
             // _seeders , _leechers & _cache keys
             let (skey, lkey, ckey) = byte_functions::make_redis_keys(&infohash);
-            let cmd: bool = redis::cmd("DEL").arg(&skey).arg(&lkey).arg(&ckey).arg(&infohash).query_async(&mut redis_connection).await.expect("fucc");
-            debug!("result of clean {:?}", cmd);
-    
-            // We should also set cleaned to true, if we got the FALSE ones
-            if get_cleaned == false {
-                client.query("UPDATE torrents SET cleaned=TRUE WHERE infohash = $1;", &[&infohash.0]).await?;
-            }
+            pipeline.cmd("DEL").arg(&skey).arg(&lkey).arg(&ckey).arg(&infohash).ignore();
+            // debug!("result of clean {:?}", cmd);
+
+            infohashes.push(infohash);
+        }
+
+        match pipeline.query_async::<redis::aio::MultiplexedConnection, ()>(&mut redis_connection).await {
+            Ok(_) => (),
+            Err(e) => error!("Failed to execute pipeline: {}", e)
+        }
+
+        // We should also set cleaned to true, if we got the FALSE ones
+        if get_cleaned == false {
+            client.query("UPDATE torrents SET cleaned=TRUE WHERE infohash = ANY($1);", &[&infohashes]).await?;
         }
 
         // info!("Executed redis pipeline. Result: {}");
         info!("Going to increment offset by {}", LIMIT);
-        offset += LIMIT;
+        offset += LIMIT as i64;
     }
-
 
     info!("Finished clean job");
     // execute pipeline
