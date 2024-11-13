@@ -19,10 +19,10 @@ async fn main() -> Result<(), Error> {
 
     let get_cleaned = match args.get(1) {
         Some(val) => match val.as_str() {
-            "TRUE" => "TRUE",
-            _ => "FALSE"
+            "TRUE" => true,
+            _ => false,
         },
-        None => "FALSE"
+        None => false,
     };
 
     // Connect to redis
@@ -47,6 +47,7 @@ async fn main() -> Result<(), Error> {
     // let max_limit = time_now_ms;
 
     let mut offset: i64 = 0;
+    let mut infohashes = Vec::<RawVal<40>>::with_capacity(LIMIT);
 
     loop {
         let rows = client.query("SELECT * FROM torrents WHERE last_announce < $1 AND cleaned = $2 OFFSET $3 LIMIT $4;", &[&max_limit, &get_cleaned, &offset, &LIMIT]).await?;
@@ -56,10 +57,13 @@ async fn main() -> Result<(), Error> {
             break;
         }
 
+        infohashes.clear();
         info!("Got {} torrents to clean! (Offset = {})", rows.len(), offset);
         let mut pipeline = redis::pipe();
+        
         for row in rows {
             let infohash: RawVal<40> = row.get(0);
+            infohashes.push(infohash);
             debug!("Going to handle row {}", String::from_utf8(infohash.0.to_vec()).expect("fuck"));
     
             // pipeline to delete keys from redis
@@ -68,11 +72,6 @@ async fn main() -> Result<(), Error> {
             let (skey, lkey, ckey) = byte_functions::make_redis_keys(&infohash);
             pipeline.cmd("DEL").arg(&skey).arg(&lkey).arg(&ckey).arg(&infohash).ignore();
             // debug!("result of clean {:?}", cmd);
-    
-            // We should also set cleaned to true, if we got the FALSE ones
-            if get_cleaned == "FALSE" {
-                // client.query("UPDATE torrents SET cleaned=TRUE WHERE infohash = $1;", &[&infohash.0]).await?;
-            }
         }
 
         match pipeline.query_async::<redis::aio::MultiplexedConnection, ()>(&mut redis_connection).await {
@@ -80,9 +79,15 @@ async fn main() -> Result<(), Error> {
             Err(e) => error!("Failed to execute pipeline: {}", e)
         }
 
+        // We should also set cleaned to true, if we got the FALSE ones
+        if get_cleaned == false {
+            client.query("UPDATE torrents SET cleaned=TRUE WHERE infohash = ANY($1);", &[&infohashes]).await?;
+        }
+
         // info!("Executed redis pipeline. Result: {}");
         info!("Going to increment offset by {}", LIMIT);
         offset += LIMIT;
+
     }
 
 
