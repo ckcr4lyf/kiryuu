@@ -19,10 +19,10 @@ async fn main() -> Result<(), Error> {
 
     let get_cleaned = match args.get(1) {
         Some(val) => match val.as_str() {
-            "TRUE" => "TRUE",
-            _ => "FALSE"
+            "TRUE" => true,
+            _ => false,
         },
-        None => "FALSE"
+        None => false,
     };
 
     // Connect to redis
@@ -69,7 +69,7 @@ async fn main() -> Result<(), Error> {
             debug!("result of clean {:?}", cmd);
     
             // We should also set cleaned to true, if we got the FALSE ones
-            if get_cleaned == "FALSE" {
+            if get_cleaned == false {
                 client.query("UPDATE torrents SET cleaned=TRUE WHERE infohash = $1;", &[&infohash.0]).await?;
             }
         }
