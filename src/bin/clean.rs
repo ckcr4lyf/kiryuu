@@ -1,4 +1,4 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{env, time::{SystemTime, UNIX_EPOCH}};
 use kiryuu::byte_functions::{self, types::RawVal};
 use log::{debug, info};
 use tokio_postgres::{Error, NoTls};
@@ -8,10 +8,22 @@ use tokio_postgres::{Error, NoTls};
 /// -> Delete their {hash}_seeders, {hash}_leechers ZSET
 /// -> Delete their {hash} HASH
 
+const LIMIT: i64 = 1000;
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Error> {
     env_logger::init();
     info!("starting clean job");
+
+    let args: Vec<String> = env::args().collect();
+
+    let get_cleaned = match args.get(1) {
+        Some(val) => match val.as_str() {
+            "TRUE" => "TRUE",
+            _ => "FALSE"
+        },
+        None => "FALSE"
+    };
 
     // Connect to redis
     let redis = redis::Client::open("redis://127.0.0.1:6379").unwrap();
@@ -34,26 +46,41 @@ async fn main() -> Result<(), Error> {
     let max_limit = time_now_ms - (1000 * 60 * 31);
     // let max_limit = time_now_ms;
 
-    let rows = client.query("SELECT * FROM torrents WHERE last_announce < $1 AND cleaned = FALSE;", &[&max_limit]).await?;
-    info!("Got {} torrents to clean!", rows.len());
+    let mut offset: i64 = 0;
 
-    for row in rows {
-        let infohash: RawVal<40> = row.get(0);
-        debug!("Going to handle row {}", String::from_utf8(infohash.0.to_vec()).expect("fuck"));
+    loop {
+        let rows = client.query("SELECT * FROM torrents WHERE last_announce < $1 AND cleaned = $2 OFFSET $3 LIMIT $4;", &[&max_limit, &get_cleaned, &offset, &LIMIT]).await?;
 
-        // pipeline to delete keys from redis
-        // basically if the TORRENT's last announce is more than 31 minutes ago, we can delete the
-        // _seeders , _leechers & _cache keys
-        let (skey, lkey, ckey) = byte_functions::make_redis_keys(&infohash);
-        let cmd: bool = redis::cmd("DEL").arg(&skey).arg(&lkey).arg(&ckey).query_async(&mut redis_connection).await.expect("fucc");
-        debug!("result of clean {:?}", cmd);
+        if rows.len() == 0 {
+            info!("No more torrents to clean! (Offset = {})", offset);
+            break;
+        }
 
-        // We should also set cleaned to true
-        client.query("UPDATE torrents SET cleaned=TRUE WHERE infohash = $1;", &[&infohash.0]).await?;
+        info!("Got {} torrents to clean! (Offset = {})", rows.len(), offset);
+        for row in rows {
+            let infohash: RawVal<40> = row.get(0);
+            debug!("Going to handle row {}", String::from_utf8(infohash.0.to_vec()).expect("fuck"));
+    
+            // pipeline to delete keys from redis
+            // basically if the TORRENT's last announce is more than 31 minutes ago, we can delete the
+            // _seeders , _leechers & _cache keys
+            let (skey, lkey, ckey) = byte_functions::make_redis_keys(&infohash);
+            let cmd: bool = redis::cmd("DEL").arg(&skey).arg(&lkey).arg(&ckey).arg(&infohash).query_async(&mut redis_connection).await.expect("fucc");
+            debug!("result of clean {:?}", cmd);
+    
+            // We should also set cleaned to true, if we got the FALSE ones
+            if get_cleaned == "FALSE" {
+                client.query("UPDATE torrents SET cleaned=TRUE WHERE infohash = $1;", &[&infohash.0]).await?;
+            }
+        }
+
+        // info!("Executed redis pipeline. Result: {}");
+        info!("Going to increment offset by {}", LIMIT);
+        offset += LIMIT;
     }
 
-    info!("Finished clean job");
 
+    info!("Finished clean job");
     // execute pipeline
     
     Ok(())
