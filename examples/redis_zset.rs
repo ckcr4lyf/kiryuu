@@ -20,7 +20,10 @@ fn main(){
 
     // Work with low val
     let zrange_result = match r_client.zrangebyscore::<_, _, _, redis::Value>("MYKEY", "0", "101").unwrap() {
-        redis::Value::Set(v1) => v1,
+        redis::Value::Array(v1) => {
+            println!("it is array");
+            v1
+        }
         _ => vec![]
     };
 
