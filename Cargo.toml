@@ -30,6 +30,7 @@ path = "examples/redis_zset.rs"
 
 [dev-dependencies]
 criterion = "0.4"
+hex = "0.4.3"
 
 [[bench]]
 name = "url_enc_to_hex"
