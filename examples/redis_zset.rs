@@ -20,7 +20,7 @@ fn main(){
 
     // Work with low val
     let zrange_result = match r_client.zrangebyscore::<_, _, _, redis::Value>("MYKEY", "0", "101").unwrap() {
-        redis::Value::Bulk(v1) => v1,
+        redis::Value::Set(v1) => v1,
         _ => vec![]
     };
 
@@ -28,7 +28,7 @@ fn main(){
     let mut pos = 0;
 
     for element in &zrange_result {
-        if let redis::Value::Data(xd) = element {
+        if let redis::Value::BulkString(xd) = element {
             for i in 0..6 {
                 seeders[pos + i] = xd[i];
             }
@@ -49,7 +49,7 @@ fn main(){
     pos = 0;
 
     for element in &zrange_result {
-        if let redis::Value::Data(xd) = element {
+        if let redis::Value::BulkString(xd) = element {
             seeders_v2[pos] = xd;
             pos += 1;
         }

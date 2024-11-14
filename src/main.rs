@@ -228,7 +228,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         // post_announce_pipeline.cmd("PUBLISH").arg("reqlog").arg(req_log::generate_csv(&user_ip_owned, &parsed.info_hash)).ignore();
 
 
-        let () = match post_announce_pipeline.query_async::<redis::aio::MultiplexedConnection, ()>(&mut rc).await {
+        let () = match post_announce_pipeline.query_async::<()>(&mut rc).await {
             Ok(_) => (),
             Err(e) => {
                 println!("Err during pipe {}. Timenow: {}, scountmod: {}, lcountmod: {}", e, time_now_ms, seed_count_mod, leech_count_mod);
@@ -253,7 +253,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 async fn healthz(data: web::Data<AppState>) -> HttpResponse {
     let mut rc = data.redis_connection.clone();
 
-    match trace_wrap_v2!(redis::cmd("PING").query_async::<_, ()>(&mut rc).await, "redis", "healthcheck") {
+    match trace_wrap_v2!(redis::cmd("PING").query_async::<()>(&mut rc).await, "redis", "healthcheck") {
         Ok(_) => HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body("OK"),
         Err(_) => HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).append_header(header::ContentType::plaintext()).body("OOF"),
     }

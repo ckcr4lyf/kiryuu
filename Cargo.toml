@@ -10,7 +10,7 @@ description = "A highly performant HTTP Bittorrent tracker"
 actix-web = "4"
 serde = { version = "1.0.136", features = ["derive"] }
 serde_qs = "0.9.1"
-redis = { version = "0.21.5", features = ["aio", "tokio-comp", "connection-manager"] }
+redis = { version = "0.27.5", features = ["aio", "tokio-comp", "connection-manager"] }
 rand = "*"
 clap = { version = "4.0.30", features = ["derive"] }
 opentelemetry = { version = "0.19", features = ["rt-tokio"], optional = true }
