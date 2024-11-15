@@ -1,59 +1,36 @@
 use std::collections::HashMap;
-
 use redis::Commands;
 
 fn main(){
     let mut r_old = redis::Client::open("redis://127.0.0.1:6379").unwrap();
-    let mut dupe = r_old.clone();
-    let mut r_new = redis::Client::open("redis://127.0.0.1:6363").unwrap();
+    let mut dupe = r_old.clone().get_connection().expect("fucc");
+    let mut r_new = redis::Client::open("redis://127.0.0.1:6363").unwrap();;
 
     // All torrents are in the ZSET TORRENTS
     // Migrate those...
     // migrate_torrrents_zset(&mut r_old, &mut r_new);
+    
+    // For all the other keys we need to scan the keyspace
+    // Get an iterator on it
+    // We need `Vec<u8>` since the keys can technically be raw bytes as well
+    let mut x = r_old.scan::<Vec<u8>>().expect("fail to scan");
 
-    // for the others we need to scan
-    let mut x = r_old.scan::<String>().expect("fail to scan");
+    while let Some(element) = x.next() {
+        // println!("Got key: {}", element);
 
-    let mut outer = 0;
-    let mut count = 0;
-    loop {
-        // let a = 
-        let mut inner = 0;
-        if let Some(element) = x.next() {
-            // println!("Got key: {}", element);
-
-            // based on design of kiryuu:
-            // If the key is 40 characters, then its a hash
-            // If it is more, then it is likely a ZSET (`_seeders` or `_leechers`)
-            // println!("New scan loop");
-            if element.len() == 40 {
-                
-                let content: HashMap<String, String> = dupe.hgetall(&element).expect("fail to get it");
-
-                if inner == 0 {
-                    println!("Got key: {}", element);
-                    println!("We got {:?}", content);
-                }
-
-                inner += 1;
-                
-                migrate_hash(&mut r_new, &element, &content);
-                count += 1;
-                // break;
-            }
-        } else {
-            println!("Scan is complete")
-        }
-
-        outer += 1;
-        println!("{} scans done!", outer);
-
-        if outer == 100000 {
-            break;
+        // based on design of kiryuu:
+        // If the key is 40 characters, then its a hash
+        // If it is more, then it is likely a ZSET (`_seeders` or `_leechers`)
+        if element.len() == 40 {
+            let content: HashMap<String, String> = dupe.hgetall(&element).expect("fail to get it");
+            unsafe { println!("Got key: {}", String::from_utf8_unchecked(element)); }
+            println!("We got {:?}", content);
+            
+            // migrate_hash(&mut r_new, &element, &content);
+        } else if element.len() < 40 {
+            println!("Weird {:?}", element)
         }
     }
-
-    println!("Did total: {}", count);
 }
 
 fn migrate_hash(new_server: &mut redis::Client, key: &str, data: &HashMap<String, String>){
