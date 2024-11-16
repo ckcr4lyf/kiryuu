@@ -2,9 +2,10 @@ use std::collections::HashMap;
 use redis::Commands;
 
 fn main(){
-    let mut r_old = redis::Client::open("redis://127.0.0.1:6379").unwrap();
-    let mut dupe = r_old.clone().get_connection().expect("fucc");
-    let mut r_new = redis::Client::open("redis://127.0.0.1:6363").unwrap();;
+    let mut r_old = redis::Client::open("redis://127.0.0.1:6379").unwrap().get_connection().expect("failed to get connection");
+    let mut r_old_2 = redis::Client::open("redis://127.0.0.1:6379").unwrap().get_connection().expect("failed to get connection");
+    // let mut dupe = r_old.clone().get_connection().expect("fucc");
+    let mut r_new = redis::Client::open("redis://127.0.0.1:6363").unwrap().get_connection().expect("failed to get connection for new");
 
     // All torrents are in the ZSET TORRENTS
     // Migrate those...
@@ -22,18 +23,29 @@ fn main(){
         // If the key is 40 characters, then its a hash
         // If it is more, then it is likely a ZSET (`_seeders` or `_leechers`)
         if element.len() == 40 {
-            let content: HashMap<String, String> = dupe.hgetall(&element).expect("fail to get it");
-            unsafe { println!("Got key: {}", String::from_utf8_unchecked(element)); }
+            let content: HashMap<String, String> = r_old_2.hgetall(&element).expect("fail to get it");
+            unsafe { println!("Got key: {}", String::from_utf8_unchecked(element.clone())); }
             println!("We got {:?}", content);
-            
             // migrate_hash(&mut r_new, &element, &content);
         } else if element.len() < 40 {
             println!("Weird {:?}", element)
+        } else if element.len() > 42 {
+            // len more than 40, should be *_seeders or *_leechers
+            unsafe { println!("Got key: {}", String::from_utf8_unchecked(element.clone())); }
+            let mut new_key: Vec<u8> = vec![0u8; 20];
+            hex::decode_to_slice(&element[0..40], &mut new_key).expect("failed to decode");
+            new_key.push(b':');
+            new_key.push(element[41]);
+            // new_key[21] = element[41]; // either 's' or 'l'
+
+            println!("new key is {:02x?}", new_key);
+
+            // migrate the ZSET
         }
     }
 }
 
-fn migrate_hash(new_server: &mut redis::Client, key: &str, data: &HashMap<String, String>){
+fn migrate_hash(new_server: &mut redis::Connection, key: &Vec<u8>, data: &HashMap<String, String>){
     let new_key = hex::decode(key).expect("failed to decode");
     // new_server.hset_multiple(new_key, data.);
 
