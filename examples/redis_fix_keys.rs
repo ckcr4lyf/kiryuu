@@ -32,15 +32,17 @@ fn main(){
         } else if element.len() > 42 {
             // len more than 40, should be *_seeders or *_leechers
             unsafe { println!("Got key: {}", String::from_utf8_unchecked(element.clone())); }
+            
+            // construct the new key
             let mut new_key: Vec<u8> = vec![0u8; 20];
             hex::decode_to_slice(&element[0..40], &mut new_key).expect("failed to decode");
             new_key.push(b':');
             new_key.push(element[41]);
-            // new_key[21] = element[41]; // either 's' or 'l'
-
             println!("new key is {:02x?}", new_key);
 
             // migrate the ZSET
+            let peers_with_scores: Vec<(Vec<u8>, f64)> = r_old_2.zrangebyscore_withscores(&element, "-inf", "+inf").expect("fail to get zset");
+            println!("We got {:?}", peers_with_scores);
         }
     }
 }
