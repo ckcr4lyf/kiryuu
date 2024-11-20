@@ -60,6 +60,12 @@ fn migrate_hash(new_server: &mut redis::Connection, key: &Vec<u8>, data: &HashMa
     // println!("For {}, we set {:?}", key, data);
 }
 
+fn migrate_zset(new_server: &mut redis::Connection, new_key: &Vec<u8>, data: Vec<(Vec<u8>, f64)>){
+    for (peer_address, score) in data {
+        let () = new_server.zadd(new_key, peer_address, score).expect("failed to ZADD");
+    }
+}
+
 
 fn migrate_torrrents_zset(old_server: &mut redis::Client, new_server: &mut redis::Client){
     let all_torrents: Vec<(Vec<u8>, f64)> = old_server.zrangebyscore_withscores("TORRENTS", "-inf", "+inf").expect("failed to ZRANGEBYSCORE");
