@@ -4,7 +4,6 @@ use redis::Commands;
 fn main(){
     let mut r_old = redis::Client::open("redis://127.0.0.1:6379").unwrap().get_connection().expect("failed to get connection");
     let mut r_old_2 = redis::Client::open("redis://127.0.0.1:6379").unwrap().get_connection().expect("failed to get connection");
-    // let mut dupe = r_old.clone().get_connection().expect("fucc");
     let mut r_new = redis::Client::open("redis://127.0.0.1:6363").unwrap().get_connection().expect("failed to get connection for new");
 
     // All torrents are in the ZSET TORRENTS
@@ -24,25 +23,26 @@ fn main(){
         // If it is more, then it is likely a ZSET (`_seeders` or `_leechers`)
         if element.len() == 40 {
             let content: HashMap<String, String> = r_old_2.hgetall(&element).expect("fail to get it");
-            unsafe { println!("Got key: {}", String::from_utf8_unchecked(element.clone())); }
-            println!("We got {:?}", content);
+            // unsafe { println!("Got key: {}", String::from_utf8_unchecked(element.clone())); }
+            // println!("We got {:?}", content);
             // migrate_hash(&mut r_new, &element, &content);
         } else if element.len() < 40 {
             println!("Weird {:?}", element)
         } else if element.len() > 42 {
             // len more than 40, should be *_seeders or *_leechers
-            unsafe { println!("Got key: {}", String::from_utf8_unchecked(element.clone())); }
+            // unsafe { println!("Got key: {}", String::from_utf8_unchecked(element.clone())); }
             
             // construct the new key
             let mut new_key: Vec<u8> = vec![0u8; 20];
             hex::decode_to_slice(&element[0..40], &mut new_key).expect("failed to decode");
             new_key.push(b':');
             new_key.push(element[41]);
-            println!("new key is {:02x?}", new_key);
+            // println!("new key is {:02x?}", new_key);
 
             // migrate the ZSET
             let peers_with_scores: Vec<(Vec<u8>, f64)> = r_old_2.zrangebyscore_withscores(&element, "-inf", "+inf").expect("fail to get zset");
-            println!("We got {:?}", peers_with_scores);
+            // println!("We got {:?}", peers_with_scores);
+            // migrate_zset(&mut r_new, &new_key, &peers_with_scores);
         }
     }
 }
@@ -60,21 +60,21 @@ fn migrate_hash(new_server: &mut redis::Connection, key: &Vec<u8>, data: &HashMa
     // println!("For {}, we set {:?}", key, data);
 }
 
-fn migrate_zset(new_server: &mut redis::Connection, new_key: &Vec<u8>, data: Vec<(Vec<u8>, f64)>){
+fn migrate_zset(new_server: &mut redis::Connection, new_key: &Vec<u8>, data: &Vec<(Vec<u8>, f64)>){
     for (peer_address, score) in data {
         let () = new_server.zadd(new_key, peer_address, score).expect("failed to ZADD");
     }
 }
 
 
-fn migrate_torrrents_zset(old_server: &mut redis::Client, new_server: &mut redis::Client){
+fn migrate_torrrents_zset(old_server: &mut redis::Connection, new_server: &mut redis::Connection){
     let all_torrents: Vec<(Vec<u8>, f64)> = old_server.zrangebyscore_withscores("TORRENTS", "-inf", "+inf").expect("failed to ZRANGEBYSCORE");
 
     println!("Got {} torrents", all_torrents.len());
 
     for i in 0..all_torrents.len() {
         if i % 10000 == 0 {
-            println!("Currently doing torrent #{}", i + 1);
+            // println!("Currently doing torrent #{}", i + 1);
         }
 
         let raw_infohash = hex::decode(&all_torrents[i].0).expect("Failed to decode");
