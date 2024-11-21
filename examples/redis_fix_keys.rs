@@ -15,49 +15,52 @@ fn main(){
     // We need `Vec<u8>` since the keys can technically be raw bytes as well
     let mut x = r_old.scan::<Vec<u8>>().expect("fail to scan");
 
+    let mut hash_count = 0;
+    let mut zset_count = 0;
+
     while let Some(element) = x.next() {
         // println!("Got key: {}", element);
+        // unsafe { println!("Got key: {}", String::from_utf8_unchecked(element.clone())); }
 
         // based on design of kiryuu:
         // If the key is 40 characters, then its a hash
         // If it is more, then it is likely a ZSET (`_seeders` or `_leechers`)
         if element.len() == 40 {
-            let content: HashMap<String, String> = r_old_2.hgetall(&element).expect("fail to get it");
-            // unsafe { println!("Got key: {}", String::from_utf8_unchecked(element.clone())); }
-            // println!("We got {:?}", content);
-            // migrate_hash(&mut r_new, &element, &content);
-        } else if element.len() < 40 {
-            println!("Weird {:?}", element)
-        } else if element.len() > 42 {
-            // len more than 40, should be *_seeders or *_leechers
-            // unsafe { println!("Got key: {}", String::from_utf8_unchecked(element.clone())); }
-            
+            hash_count += 1;
+
             // construct the new key
-            let mut new_key: Vec<u8> = vec![0u8; 20];
-            hex::decode_to_slice(&element[0..40], &mut new_key).expect("failed to decode");
-            new_key.push(b':');
-            new_key.push(element[41]);
+            // let new_key = hex::decode(&element).expect("failed to decode");
+
+            // let content: HashMap<String, String> = r_old_2.hgetall(&element).expect("fail to get it");
+            // println!("We got {:?}", content);
+            // migrate_hash(&mut r_new, &new_key, &content);
+        } else if element.len() < 40 {
+            println!("Weird {:2X?}", element)
+        } else if element.len() > 42 {
+            zset_count += 1;
+            // len more than 40, should be *_seeders or *_leechers
+
+            // construct the new key
+            // let mut new_key: Vec<u8> = vec![0u8; 20];
+            // hex::decode_to_slice(&element[0..40], &mut new_key).expect("failed to decode");
+            // new_key.push(b':');
+            // new_key.push(element[41]);
             // println!("new key is {:02x?}", new_key);
 
             // migrate the ZSET
-            let peers_with_scores: Vec<(Vec<u8>, f64)> = r_old_2.zrangebyscore_withscores(&element, "-inf", "+inf").expect("fail to get zset");
+            // let peers_with_scores: Vec<(Vec<u8>, f64)> = r_old_2.zrangebyscore_withscores(&element, "-inf", "+inf").expect("fail to get zset");
             // println!("We got {:?}", peers_with_scores);
             // migrate_zset(&mut r_new, &new_key, &peers_with_scores);
         }
     }
+
+    println!("Got {} HASHes, {} ZSETs", hash_count, zset_count);
 }
 
-fn migrate_hash(new_server: &mut redis::Connection, key: &Vec<u8>, data: &HashMap<String, String>){
-    let new_key = hex::decode(key).expect("failed to decode");
-    // new_server.hset_multiple(new_key, data.);
-
+fn migrate_hash(new_server: &mut redis::Connection, new_key: &Vec<u8>, data: &HashMap<String, String>){
     for (realkey, value) in data {
-        let _: () = new_server.hset(&new_key, realkey, value).expect("fail to hset");
-        // println!("We pogging with {} and {} into {:2X?}", realkey, value, new_key);
+        let () = new_server.hset(&new_key, realkey, value).expect("fail to hset");
     }
-    // new_server.hset(key, field, value)
-
-    // println!("For {}, we set {:?}", key, data);
 }
 
 fn migrate_zset(new_server: &mut redis::Connection, new_key: &Vec<u8>, data: &Vec<(Vec<u8>, f64)>){
