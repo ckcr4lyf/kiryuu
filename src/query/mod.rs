@@ -26,7 +26,7 @@ pub enum Event {
 
 pub struct PeerInfo {
     pub ip_port: [u8; 6],
-    pub info_hash: byte_functions::types::RawVal<40>,
+    pub info_hash: byte_functions::types::RawVal<20>,
     pub is_seeding: bool,
     pub event: Event
 }
@@ -45,11 +45,7 @@ impl From<serde_qs::Error> for QueryError {
 
 pub fn parse_announce(ip_addr: &std::net::Ipv4Addr, query: &[u8]) -> Result<PeerInfo, QueryError> {
     let parsed: AReq = qs::from_bytes(query)?;
-    let hex_str_info_hash = byte_functions::url_encoded_to_hex_u8(&parsed.info_hash);
-
-    if hex_str_info_hash.len() != 40 {
-        return Err(QueryError::InvalidInfohash);
-    }
+    let raw_infohash = byte_functions::url_encoded_to_raw_u8(&parsed.info_hash);
 
     let is_seeding = match parsed.left.as_str() {
         "0" => true,
@@ -68,7 +64,7 @@ pub fn parse_announce(ip_addr: &std::net::Ipv4Addr, query: &[u8]) -> Result<Peer
 
     return Ok(PeerInfo{
         ip_port: byte_functions::ip_str_port_u16_to_bytes(ip_addr, parsed.port),
-        info_hash: byte_functions::types::RawVal(hex_str_info_hash),
+        info_hash: byte_functions::types::RawVal(raw_infohash),
         is_seeding,
         event: announce_event,
     });
