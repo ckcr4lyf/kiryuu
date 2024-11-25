@@ -5,9 +5,9 @@ pub fn make_redis_keys(infohash: &types::RawVal<20>) -> (types::RawVal<22>, type
     let mut leecher_key: [u8; 22] = *b"AAAAAAAAAAAAAAAAAAAA:l";
     let mut cache_key: [u8; 22] = *b"AAAAAAAAAAAAAAAAAAAA:c";
 
-    seeder_key.copy_from_slice(&infohash.0);
-    leecher_key.copy_from_slice(&infohash.0);
-    cache_key.copy_from_slice(&infohash.0);
+    seeder_key[0..20].copy_from_slice(&infohash.0);
+    leecher_key[0..20].copy_from_slice(&infohash.0);
+    cache_key[0..20].copy_from_slice(&infohash.0);
 
     return (types::RawVal(seeder_key), types::RawVal(leecher_key), types::RawVal(cache_key));
 }
