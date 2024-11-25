@@ -4,15 +4,17 @@ use redis::Commands;
 fn main(){
     let mut r_old = redis::Client::open("redis://127.0.0.1:6379").unwrap().get_connection().expect("failed to get connection");
     let mut r_old_2 = redis::Client::open("redis://127.0.0.1:6379").unwrap().get_connection().expect("failed to get connection");
-    let mut r_new = redis::Client::open("redis://127.0.0.1:6363").unwrap().get_connection().expect("failed to get connection for new");
+    let mut r_new = redis::Client::open("redis://127.0.0.1:6969").unwrap().get_connection().expect("failed to get connection for new");
 
     // All torrents are in the ZSET TORRENTS
     // Migrate those...
     migrate_torrrents_zset(&mut r_old, &mut r_new);
+    // return;
     
     // For all the other keys we need to scan the keyspace
     // Get an iterator on it
     // We need `Vec<u8>` since the keys can technically be raw bytes as well
+    println!("Finished TORRENTS migration. Gonna do the scanning now...");
     let mut x = r_old.scan::<Vec<u8>>().expect("fail to scan");
 
     let mut hash_count = 0;
@@ -64,8 +66,10 @@ fn migrate_hash(new_server: &mut redis::Connection, new_key: &Vec<u8>, data: &Ha
 }
 
 fn migrate_zset(new_server: &mut redis::Connection, new_key: &Vec<u8>, data: &Vec<(Vec<u8>, f64)>){
-    for (peer_address, score) in data {
-        let () = new_server.zadd(new_key, peer_address, score).expect("failed to ZADD");
+    for (peer_address, _) in data {
+        // let () = new_server.zadd(new_key, peer_address, score).expect("failed to ZADD");
+        let () = new_server.hset(new_key, peer_address, 1u8).expect("failed to HSET");
+        let () = new_server.hexpire(new_key, 60 * 60, redis::ExpireOption::NONE, peer_address).expect("failed to HEXPIRE");
     }
 }
 
@@ -77,10 +81,13 @@ fn migrate_torrrents_zset(old_server: &mut redis::Connection, new_server: &mut r
 
     for i in 0..all_torrents.len() {
         if i % 10000 == 0 {
-            // println!("Currently doing torrent #{}", i + 1);
+            println!("Currently doing torrent #{}", i + 1);
         }
 
         let raw_infohash = hex::decode(&all_torrents[i].0).expect("Failed to decode");
-        new_server.zadd::<&str, f64, &Vec<u8>, ()>("TORRENTS", &raw_infohash, all_torrents[i].1).expect("failed to zadd");
+        new_server.hset::<&str, &Vec<u8>, u8, ()>("TORRENTS", &raw_infohash, 1u8).expect("failed to HSET");
+
+        // We also want to expire this guy in 30 min...
+        let () = new_server.hexpire("TORRENTS", 60 * 60, redis::ExpireOption::NONE, &raw_infohash).expect("failed to HEXPIRE");
     }
 }
