@@ -106,16 +106,14 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     let (seeders_key, leechers_key, cache_key) = byte_functions::make_redis_keys(&parsed.info_hash);
 
     let mut p = redis::pipe();
-    // TODO: Now it'll be HEXISTS, not ZSCORE
-    let pp = p.cmd("ZSCORE").arg(&seeders_key).arg(&parsed.ip_port)
-    .cmd("ZSCORE").arg(&leechers_key).arg(&parsed.ip_port)
-    .cmd("GET").arg(&cache_key);
+    let pp = p.hexists(&seeders_key, &parsed.ip_port)
+    .hexists(&leechers_key, &parsed.ip_port)
+    .get(&cache_key);
     
-    let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = trace_wrap_v2!(pp.query_async(&mut rc).await, "redis", "seeder_leecher_cache").unwrap();
+    let (is_seeder_v2, is_leecher_v2, cached_reply) : (bool, bool, Vec<u8>) = trace_wrap_v2!(pp.query_async(&mut rc).await, "redis", "seeder_leecher_cache").unwrap();
 
     let mut post_announce_pipeline = redis::pipe();
-    // TODO: This will now be HEXPIRE (O(log(n)) -> O(1))
-    post_announce_pipeline.cmd("ZADD").arg(constants::TORRENTS_KEY).arg(time_now_ms).arg(&parsed.info_hash).ignore(); // To "update" the torrent
+    post_announce_pipeline.hexpire(constants::TORRENTS_KEY, 60 * 31, redis::ExpireOption::NONE, &parsed.info_hash).ignore();
 
     // These will contain how we change the total number of seeders / leechers by the end of the announce
     let mut seed_count_mod: i64 = 0;
@@ -123,31 +121,28 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 
 
     if let query::Event::Stopped = parsed.event {
-        if let Exists::Yes = is_seeder_v2 {
+        if is_seeder_v2 {
             seed_count_mod -= 1;
-            // TODO: This will become HDEL (O(log(n)) -> O(1))
-            post_announce_pipeline.cmd("ZREM").arg(&seeders_key).arg(&parsed.ip_port).ignore(); // We dont care about the return value
-        } else if let Exists::Yes = is_leecher_v2 {
+            post_announce_pipeline.hdel(&seeders_key, &parsed.ip_port).ignore();
+        } else if is_leecher_v2 {
             leech_count_mod -= 1;
-            // TODO: This will become HDEL (O(log(n)) -> O(1))
-            post_announce_pipeline.cmd("ZREM").arg(&leechers_key).arg(&parsed.ip_port).ignore(); // We dont care about the return value
+            post_announce_pipeline.hdel(&leechers_key, &parsed.ip_port).ignore();
         }
     } else if parsed.is_seeding {
-        // ZADD it regardless to update timestamp for the guy (in redis)
-        // TODO: This will now be HSET + HEXPIRE (O(log(n)) -> O(1))
-        post_announce_pipeline.cmd("ZADD").arg(&seeders_key).arg(time_now_ms).arg(&parsed.ip_port).ignore();
-
-        // New seeder
-        if let Exists::No = is_seeder_v2 {
+        // New seeder, we will HSET it
+        if is_seeder_v2 == false {
             seed_count_mod += 1;
+            post_announce_pipeline.hset(&seeders_key, &parsed.ip_port, 1).ignore();
         }
+
+        // regardless of new or not, we will always set HEXPIRE to 31 min from now
+        post_announce_pipeline.hexpire(&seeders_key, 60 * 31, redis::ExpireOption::NONE, &parsed.ip_port).ignore();
 
         // They just completed
         if let query::Event::Completed = parsed.event {
             // If they were previously leecher, remove from that pool
-            if let Exists::Yes = is_leecher_v2 {
-                // TODO: This will become HDEL (O(log(n)) -> O(1))
-                post_announce_pipeline.cmd("ZREM").arg(&leechers_key).arg(&parsed.ip_port).ignore();
+            if is_leecher_v2 {
+                post_announce_pipeline.hdel(&leechers_key, &parsed.ip_port).ignore();
                 leech_count_mod -= 1
             }
 
@@ -155,13 +150,14 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("downloaded").arg(1u32).ignore();
         }
     } else {
-        // ZADD it regardless to update timestamp for the guy (in redis)
-        // TODO: This will now be HSET + HEXPIRE (O(log(n)) -> O(1))
-        post_announce_pipeline.cmd("ZADD").arg(&leechers_key).arg(time_now_ms).arg(&parsed.ip_port).ignore();
-
-        if let Exists::No = is_leecher_v2 {
+        // New leecher, we will HSET it
+        if is_leecher_v2 == false {
             leech_count_mod += 1;
+            post_announce_pipeline.hset(&leechers_key, &parsed.ip_port, 1).ignore();
         };
+
+        // regardless of new or not, we will always set HEXPIRE to 31 min from now
+        post_announce_pipeline.hexpire(&leechers_key, 60 * 31, redis::ExpireOption::NONE, &parsed.ip_port).ignore();
     } 
 
     // Cache miss = query redis
@@ -175,9 +171,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             let mut p = redis::pipe();
             // TODO: this will become 2x HKEYS w/o limit (O(log(N) + M) -> O(N)) => This could potentially be a bit of a regression; e.g. we would now get all 1000 IPs from redis (previously limit 50).
             // Alternatively: We can HSCAN till 50, which should be very efficient (Basically HSCAN is O(1) per call... , but multiple calls so latency is more? - Need to check).
-            let pp = p.cmd("ZRANGEBYSCORE").arg(&seeders_key).arg(max_limit).arg(time_now_ms).arg("LIMIT").arg(0).arg(50)
-            .cmd("ZRANGEBYSCORE").arg(&leechers_key).arg(max_limit).arg(time_now_ms).arg("LIMIT").arg(0).arg(50);
-
+            let pp = p.hkeys(&seeders_key).hkeys(&leechers_key);
             let (seeders, leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = trace_wrap_v2!(pp.query_async(&mut rc).await, "redis", "seeders_leechers").unwrap();
         
             // endex = end index XD. seems in rust cannot select first 50 elements, or limit to less if vector doesnt have 50

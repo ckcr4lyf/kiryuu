@@ -6,7 +6,7 @@ use crate::byte_functions;
 #[derive(Debug, Deserialize)]
 pub struct AReq {
     pub port: u16,
-    pub info_hash: String,
+    pub info_hash: String, // TBD: If we say this is a Vec<u8>, can we avoid the problem of %AB attempting to be UTF-8 decoded?!
 
     /// The amount of bytes the client has left to download
     /// for the purposes of a public tracker, the magnitude is insignificant
