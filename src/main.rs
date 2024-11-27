@@ -149,7 +149,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             }
 
             // Increment the downloaded count for the infohash stats
-            post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("downloaded").arg(1u32).ignore();
+            // post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("downloaded").arg(1u32).ignore();
         }
     } else {
         // New leecher, we will HSET it
@@ -198,11 +198,11 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         // O(1) in redis
         // Can clean up this branching crap
         if seed_count_mod != 0 {
-            post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("seeders").arg(seed_count_mod).ignore();
+            // post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("seeders").arg(seed_count_mod).ignore();
         }
 
         if leech_count_mod != 0 {
-            post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("leechers").arg(leech_count_mod).ignore();
+            // post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("leechers").arg(leech_count_mod).ignore();
         }
 
         // TODO: Patch cached reply with the count mods?
