@@ -42,7 +42,7 @@ struct Args {
 
 // If not more than 31, possible not online
 // So dont waste bandwidth on redis query etc.
-const THIRTY_ONE_MINUTES: i64 = 60 * 31 * 1000;
+const THIRTY_ONE_MINUTES_AS_SECONDS: i64 = 60 * 31;
 
 #[derive(Debug)]
 enum Exists {
@@ -73,7 +73,6 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
   
     let time_now = SystemTime::now().duration_since(UNIX_EPOCH).expect("fucked up");
     let time_now_ms: i64 = i64::try_from(time_now.as_millis()).expect("fucc");
-    let max_limit = time_now_ms - THIRTY_ONE_MINUTES;
 
     let query = req.query_string();
     let peer_addr = req.peer_addr();
@@ -113,7 +112,10 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     let (is_seeder_v2, is_leecher_v2, cached_reply) : (bool, bool, Vec<u8>) = trace_wrap_v2!(pp.query_async(&mut rc).await, "redis", "seeder_leecher_cache").unwrap();
 
     let mut post_announce_pipeline = redis::pipe();
-    post_announce_pipeline.hexpire(constants::TORRENTS_KEY, 60 * 31, redis::ExpireOption::NONE, &parsed.info_hash).ignore();
+
+    // update / reset the expire time on the hashes
+    post_announce_pipeline.expire(&seeders_key, THIRTY_ONE_MINUTES_AS_SECONDS).ignore()
+    .expire(&leechers_key, THIRTY_ONE_MINUTES_AS_SECONDS).ignore();
 
     // These will contain how we change the total number of seeders / leechers by the end of the announce
     let mut seed_count_mod: i64 = 0;
