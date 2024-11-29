@@ -30,6 +30,12 @@ struct Args {
     #[arg(long)]
     host: Option<String>,
 
+    /// Redis connection string
+    /// For TCP: redis://127.0.0.1:6379
+    /// For Unix: unix:///tmp/redis.sock
+    #[arg(long)]
+    redis_connection_string: Option<String>,
+    
     /// Address of redis instance. Default: 127.0.0.1:6379
     #[arg(long)]
     redis_host: Option<String>,
@@ -296,8 +302,12 @@ async fn main() -> std::io::Result<()> {
         let _tracer = init_tracer(&args).expect("Failed to initialise tracer.");
     }
 
-    let redis_host = args.redis_host.unwrap_or_else(|| "127.0.0.1:6379".to_string());
-    let redis = redis::Client::open("redis://".to_string() + &redis_host).unwrap();
+    let redis_host = match args.redis_connection_string {
+        Some(v) => v,
+        None => format!("redis://{}", args.redis_host.unwrap_or_else(|| "127.0.0.1:6379".to_string()))
+    };
+    
+    let redis = redis::Client::open(redis_host).unwrap();
     let redis_connection = redis.get_multiplexed_tokio_connection().await.unwrap();
 
     let data = web::Data::new(AppState{
