@@ -2,6 +2,7 @@ mod byte_functions;
 mod query;
 mod constants;
 mod req_log;
+mod db;
 
 use actix_web::{get, App, HttpServer, web, HttpRequest, HttpResponse, http::header, http::StatusCode, dev::Service};
 use std::time::{SystemTime, UNIX_EPOCH};
