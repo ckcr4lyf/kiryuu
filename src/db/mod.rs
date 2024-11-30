@@ -1,13 +1,14 @@
 use redis::AsyncCommands;
 use crate::byte_functions::types;
 
+#[inline(always)]
 pub async fn get_hash_keys_scan(rc: &mut redis::aio::MultiplexedConnection, key: &types::RawVal<22>, count: usize) -> Vec<[u8; 6]> {
     // TBD: what if its Vec<Vec<u8>> in the context of memory allocation
     let mut keys: Vec<[u8; 6]> = Vec::with_capacity(count);
-    let mut iter = rc.hscan::<&types::RawVal<22>, [u8; 6]>(&key).await.expect("fail to scan");
+    let mut iter = rc.hscan::<&types::RawVal<22>, ([u8; 6], u8)>(&key).await.expect("fail to scan");
 
-    while let Some(element) = iter.next_item().await {
-        keys.push(element);
+    while let Some((peer, _)) = iter.next_item().await {
+        keys.push(peer);
 
         if keys.len() == count {
             return keys;

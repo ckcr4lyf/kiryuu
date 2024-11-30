@@ -70,7 +70,7 @@ pub fn parse_announce(ip_addr: &std::net::Ipv4Addr, query: &[u8]) -> Result<Peer
     });
 }
 
-pub fn announce_reply(seeders_count: i64, leechers_count: i64, seeders: &[Vec<u8>], leechers: &[Vec<u8>]) -> Vec<u8> {
+pub fn announce_reply(seeders_count: i64, leechers_count: i64, seeders: &[[u8; 6]], leechers: &[[u8; 6]]) -> Vec<u8> {
     // This is the number of peers in the response, not total peer count
     let peers_length = seeders.len() + leechers.len();
 
@@ -93,13 +93,13 @@ mod tests {
 
     #[test]
     fn is_legit(){
-        let bytes: Vec<u8> = Vec::from([1, 2, 3, 4]);
+        let bytes = [0u8; 6];
         let _no_bytes: Vec<u8> = Vec::from([]);
     
-        let mut p1: Vec<Vec<u8>> = Vec::new();
+        let mut p1: Vec<[u8; 6]> = Vec::new();
         p1.push(bytes);
         
-        let p2: Vec<Vec<u8>> = Vec::new();
+        let p2: Vec<[u8; 6]> = Vec::new();
         // p2.push(no_bytes);
     
         // TODO: Actually implement a test here...

@@ -5,6 +5,7 @@ mod req_log;
 mod db;
 
 use actix_web::{get, App, HttpServer, web, HttpRequest, HttpResponse, http::header, http::StatusCode, dev::Service};
+use db::get_hash_keys_scan;
 use std::time::{SystemTime, UNIX_EPOCH};
 use clap::Parser;
 use std::collections::HashMap;
@@ -180,8 +181,10 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             let mut p = redis::pipe();
             // TODO: this will become 2x HKEYS w/o limit (O(log(N) + M) -> O(N)) => This could potentially be a bit of a regression; e.g. we would now get all 1000 IPs from redis (previously limit 50).
             // Alternatively: We can HSCAN till 50, which should be very efficient (Basically HSCAN is O(1) per call... , but multiple calls so latency is more? - Need to check).
-            let pp = p.hkeys(&seeders_key).hkeys(&leechers_key);
-            let (seeders, leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = trace_wrap_v2!(pp.query_async(&mut rc).await, "redis", "seeders_leechers").unwrap();
+            // let pp = p.hkeys(&seeders_key).hkeys(&leechers_key);
+            // let (seeders, leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = trace_wrap_v2!(pp.query_async(&mut rc).await, "redis", "seeders_leechers").unwrap();
+            let seeders = get_hash_keys_scan(&mut rc, &seeders_key, 50).await;
+            let leechers = get_hash_keys_scan(&mut rc, &leechers_key, 50).await;
         
             // endex = end index XD. seems in rust cannot select first 50 elements, or limit to less if vector doesnt have 50
             // e.g. &seeders[0..50] is panicking when seeders len is < 50. Oh well.
