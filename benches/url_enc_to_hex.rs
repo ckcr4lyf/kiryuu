@@ -4,7 +4,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("URLenc to hex");
-    group.bench_function("url_encoded_to_hex", |b| b.iter(|| byte_functions::url_encoded_to_hex_u8(black_box("%DD%00%D2%1CuDA%AAL%B6J%1E%A7z%2CvFAR%C3")) ));
+    group.bench_function("url_encoded_to_hex", |b| b.iter(|| byte_functions::url_encoded_to_raw_u8(black_box("%DD%00%D2%1CuDA%AAL%B6J%1E%A7z%2CvFAR%C3")) ));
     group.finish();
 }
 

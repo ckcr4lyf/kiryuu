@@ -5,3 +5,4 @@ sandbox/
 *.svg
 *.data
 *.data.old
+*.zst
