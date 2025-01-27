@@ -274,6 +274,10 @@ async fn healthz(data: web::Data<AppState>) -> HttpResponse {
     }
 }
 
+async fn redirector() -> HttpResponse {
+    HttpResponse::build(StatusCode::TEMPORARY_REDIRECT).append_header((header::LOCATION, "https://tracker.mywaifu.best")).finish()
+}
+
 struct AppState {
     redis_connection: redis::aio::MultiplexedConnection,
 }
@@ -355,6 +359,7 @@ async fn main() -> std::io::Result<()> {
         })
         .service(healthz)
         .service(announce)
+        .default_service(web::route().to(redirector))
     })
     .bind((host, port))?
     .max_connection_rate(8192)
