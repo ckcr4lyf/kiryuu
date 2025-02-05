@@ -4,7 +4,7 @@ mod constants;
 mod req_log;
 mod db;
 
-use actix_web::{get, App, HttpServer, web, HttpRequest, HttpResponse, http::header, http::StatusCode, dev::Service};
+use actix_web::{dev::Service, get, http::{header, StatusCode}, web::{self, Redirect}, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use db::get_hash_keys_scan;
 use std::time::{SystemTime, UNIX_EPOCH};
 use clap::Parser;
@@ -333,6 +333,8 @@ async fn main() -> std::io::Result<()> {
     // let REDIRECT_RESPONSE = HttpResponse::TemporaryRedirect().insert_header((header::LOCATION, "https://tracker.mywaifu.best"));
     // let leaked = Box::leak(*REDIRECT_RESPONSE);
 
+    // let myr = Redirect::to(HOMEPAGE);
+
     return HttpServer::new(move || {
         App::new()
         .app_data(data.clone())
@@ -367,7 +369,12 @@ async fn main() -> std::io::Result<()> {
         })
         .service(healthz)
         .service(announce)
-        .default_service(web::to(redirector))
+        // .default_service(web::to(redirector))
+        .default_service(web::to(|| async {
+            Redirect::to(HOMEPAGE)
+            // myr
+        }))
+        // .default_service(web::to(redirector))
     })
     .bind((host, port))?
     .max_connection_rate(8192)
