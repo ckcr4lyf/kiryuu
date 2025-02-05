@@ -7,7 +7,7 @@ description = "A highly performant HTTP Bittorrent tracker"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-actix-web = "4"
+actix-web = { version = "4.9.0", default-features = false, features = ["macros"] }
 serde = { version = "1.0.136", features = ["derive"] }
 serde_qs = "0.9.1"
 redis = { version = "0.27.5", features = ["aio", "tokio-comp", "connection-manager"] }
