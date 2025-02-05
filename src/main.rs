@@ -275,7 +275,8 @@ async fn healthz(data: web::Data<AppState>) -> HttpResponse {
 }
 
 async fn redirector() -> HttpResponse {
-    HttpResponse::build(StatusCode::TEMPORARY_REDIRECT).append_header((header::LOCATION, "https://tracker.mywaifu.best")).finish()
+    HttpResponse::TemporaryRedirect().insert_header((header::LOCATION, "https://tracker.mywaifu.best")).finish()
+    // HttpResponse::build(StatusCode::TEMPORARY_REDIRECT).append_header((header::LOCATION, "https://tracker.mywaifu.best")).finish()
 }
 
 struct AppState {
@@ -301,6 +302,9 @@ fn init_tracer(args: &Args) -> Result<sdktrace::Tracer, TraceError> {
     .install_batch(opentelemetry::runtime::Tokio)
 }
 
+static HOMEPAGE: &'static str = "https://tracker.mywaifu.best";
+const HEADER: (header::HeaderName, &'static str) = (header::LOCATION, HOMEPAGE);
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let args = Args::parse();
@@ -324,6 +328,10 @@ async fn main() -> std::io::Result<()> {
 
     let port = args.port.unwrap_or_else(|| 6969);
     let host = args.host.unwrap_or_else(|| "0.0.0.0".to_string());
+
+    // let REDIRECT_RESPONSE = HttpResponse::build(StatusCode::TEMPORARY_REDIRECT).append_header((header::LOCATION, "https://tracker.mywaifu.best")).finish();
+    // let REDIRECT_RESPONSE = HttpResponse::TemporaryRedirect().insert_header((header::LOCATION, "https://tracker.mywaifu.best"));
+    // let leaked = Box::leak(*REDIRECT_RESPONSE);
 
     return HttpServer::new(move || {
         App::new()
@@ -359,7 +367,7 @@ async fn main() -> std::io::Result<()> {
         })
         .service(healthz)
         .service(announce)
-        .default_service(web::route().to(redirector))
+        .default_service(web::to(redirector))
     })
     .bind((host, port))?
     .max_connection_rate(8192)
