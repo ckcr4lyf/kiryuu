@@ -4,7 +4,7 @@ mod constants;
 mod req_log;
 mod db;
 
-use actix_web::{dev::Service, get, http::{header, StatusCode}, web::{self, Redirect}, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use actix_web::{dev::Service, error::ErrorNotFound, get, http::{header, StatusCode}, web::{self, Redirect}, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use db::get_hash_keys_scan;
 use std::time::{SystemTime, UNIX_EPOCH};
 use clap::Parser;
@@ -357,6 +357,9 @@ async fn main() -> std::io::Result<()> {
         })
         .service(healthz)
         .service(announce)
+        .service(web::resource("/scrape").to(|| async {
+            HttpResponse::build(StatusCode::NOT_FOUND).finish()
+        }))
         .default_service(web::to(|| async {
             Redirect::to(HOMEPAGE)
         }))
