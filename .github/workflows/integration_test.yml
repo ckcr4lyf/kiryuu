@@ -35,7 +35,7 @@ jobs:
           - /qbit-svc/watch:/watch
 
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: kiryuu
 
@@ -90,7 +90,7 @@ jobs:
         run: kill -9 `lsof -i:6969 -t`
 
       - name: Upload tcpdump logs
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: tcpdump_logs
           path: |
@@ -131,7 +131,7 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: kiryuu
 
