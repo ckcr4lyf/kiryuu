@@ -6,7 +6,7 @@ use crate::byte_functions;
 #[derive(Debug, Deserialize)]
 pub struct AReq {
     pub port: u16,
-    pub info_hash: String,
+    pub info_hash: String, // TBD: If we say this is a Vec<u8>, can we avoid the problem of %AB attempting to be UTF-8 decoded?!
 
     /// The amount of bytes the client has left to download
     /// for the purposes of a public tracker, the magnitude is insignificant
@@ -26,7 +26,7 @@ pub enum Event {
 
 pub struct PeerInfo {
     pub ip_port: [u8; 6],
-    pub info_hash: byte_functions::types::RawVal<40>,
+    pub info_hash: byte_functions::types::RawVal<20>,
     pub is_seeding: bool,
     pub event: Event
 }
@@ -45,11 +45,7 @@ impl From<serde_qs::Error> for QueryError {
 
 pub fn parse_announce(ip_addr: &std::net::Ipv4Addr, query: &[u8]) -> Result<PeerInfo, QueryError> {
     let parsed: AReq = qs::from_bytes(query)?;
-    let hex_str_info_hash = byte_functions::url_encoded_to_hex_u8(&parsed.info_hash);
-
-    if hex_str_info_hash.len() != 40 {
-        return Err(QueryError::InvalidInfohash);
-    }
+    let raw_infohash = byte_functions::url_encoded_to_raw_u8(&parsed.info_hash);
 
     let is_seeding = match parsed.left.as_str() {
         "0" => true,
@@ -68,13 +64,13 @@ pub fn parse_announce(ip_addr: &std::net::Ipv4Addr, query: &[u8]) -> Result<Peer
 
     return Ok(PeerInfo{
         ip_port: byte_functions::ip_str_port_u16_to_bytes(ip_addr, parsed.port),
-        info_hash: byte_functions::types::RawVal(hex_str_info_hash),
+        info_hash: byte_functions::types::RawVal(raw_infohash),
         is_seeding,
         event: announce_event,
     });
 }
 
-pub fn announce_reply(seeders_count: i64, leechers_count: i64, seeders: &[Vec<u8>], leechers: &[Vec<u8>]) -> Vec<u8> {
+pub fn announce_reply(seeders_count: i64, leechers_count: i64, seeders: &[[u8; 6]], leechers: &[[u8; 6]]) -> Vec<u8> {
     // This is the number of peers in the response, not total peer count
     let peers_length = seeders.len() + leechers.len();
 
@@ -97,13 +93,13 @@ mod tests {
 
     #[test]
     fn is_legit(){
-        let bytes: Vec<u8> = Vec::from([1, 2, 3, 4]);
+        let bytes = [0u8; 6];
         let _no_bytes: Vec<u8> = Vec::from([]);
     
-        let mut p1: Vec<Vec<u8>> = Vec::new();
+        let mut p1: Vec<[u8; 6]> = Vec::new();
         p1.push(bytes);
         
-        let p2: Vec<Vec<u8>> = Vec::new();
+        let p2: Vec<[u8; 6]> = Vec::new();
         // p2.push(no_bytes);
     
         // TODO: Actually implement a test here...

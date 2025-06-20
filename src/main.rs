@@ -2,8 +2,10 @@ mod byte_functions;
 mod query;
 mod constants;
 mod req_log;
+mod db;
 
-use actix_web::{get, App, HttpServer, web, HttpRequest, HttpResponse, http::header, http::StatusCode, dev::Service};
+use actix_web::{dev::Service, error::ErrorNotFound, get, http::{header, StatusCode}, web::{self, Redirect}, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use db::get_hash_keys_scan;
 use std::time::{SystemTime, UNIX_EPOCH};
 use clap::Parser;
 use std::collections::HashMap;
@@ -48,7 +50,7 @@ struct Args {
 
 // If not more than 31, possible not online
 // So dont waste bandwidth on redis query etc.
-const THIRTY_ONE_MINUTES: i64 = 60 * 31 * 1000;
+const THIRTY_ONE_MINUTES_AS_SECONDS: i64 = 60 * 31;
 
 #[derive(Debug)]
 enum Exists {
@@ -79,7 +81,6 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
   
     let time_now = SystemTime::now().duration_since(UNIX_EPOCH).expect("fucked up");
     let time_now_ms: i64 = i64::try_from(time_now.as_millis()).expect("fucc");
-    let max_limit = time_now_ms - THIRTY_ONE_MINUTES;
 
     let query = req.query_string();
     let peer_addr = req.peer_addr();
@@ -112,14 +113,17 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     let (seeders_key, leechers_key, cache_key) = byte_functions::make_redis_keys(&parsed.info_hash);
 
     let mut p = redis::pipe();
-    let pp = p.cmd("ZSCORE").arg(&seeders_key).arg(&parsed.ip_port)
-    .cmd("ZSCORE").arg(&leechers_key).arg(&parsed.ip_port)
-    .cmd("GET").arg(&cache_key);
+    let pp = p.hexists(&seeders_key, &parsed.ip_port)
+    .hexists(&leechers_key, &parsed.ip_port)
+    .get(&cache_key);
     
-    let (is_seeder_v2, is_leecher_v2, cached_reply) : (Exists, Exists, Vec<u8>) = trace_wrap_v2!(pp.query_async(&mut rc).await, "redis", "seeder_leecher_cache").unwrap();
+    let (is_seeder_v2, is_leecher_v2, cached_reply) : (bool, bool, Vec<u8>) = trace_wrap_v2!(pp.query_async(&mut rc).await, "redis", "seeder_leecher_cache").unwrap();
 
     let mut post_announce_pipeline = redis::pipe();
-    post_announce_pipeline.cmd("ZADD").arg(constants::TORRENTS_KEY).arg(time_now_ms).arg(&parsed.info_hash).ignore(); // To "update" the torrent
+
+    // update / reset the expire time on the hashes
+    post_announce_pipeline.expire(&seeders_key, THIRTY_ONE_MINUTES_AS_SECONDS).ignore()
+    .expire(&leechers_key, THIRTY_ONE_MINUTES_AS_SECONDS).ignore();
 
     // These will contain how we change the total number of seeders / leechers by the end of the announce
     let mut seed_count_mod: i64 = 0;
@@ -127,40 +131,43 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 
 
     if let query::Event::Stopped = parsed.event {
-        if let Exists::Yes = is_seeder_v2 {
+        if is_seeder_v2 {
             seed_count_mod -= 1;
-            post_announce_pipeline.cmd("ZREM").arg(&seeders_key).arg(&parsed.ip_port).ignore(); // We dont care about the return value
-        } else if let Exists::Yes = is_leecher_v2 {
+            post_announce_pipeline.hdel(&seeders_key, &parsed.ip_port).ignore();
+        } else if is_leecher_v2 {
             leech_count_mod -= 1;
-            post_announce_pipeline.cmd("ZREM").arg(&leechers_key).arg(&parsed.ip_port).ignore(); // We dont care about the return value
+            post_announce_pipeline.hdel(&leechers_key, &parsed.ip_port).ignore();
         }
     } else if parsed.is_seeding {
-        // ZADD it regardless to update timestamp for the guy (in redis)
-        post_announce_pipeline.cmd("ZADD").arg(&seeders_key).arg(time_now_ms).arg(&parsed.ip_port).ignore();
-
-        // New seeder
-        if let Exists::No = is_seeder_v2 {
+        // New seeder, we will HSET it
+        if is_seeder_v2 == false {
             seed_count_mod += 1;
+            post_announce_pipeline.hset(&seeders_key, &parsed.ip_port, 1).ignore();
         }
+
+        // regardless of new or not, we will always set HEXPIRE to 31 min from now
+        post_announce_pipeline.hexpire(&seeders_key, 60 * 31, redis::ExpireOption::NONE, &parsed.ip_port).ignore();
 
         // They just completed
         if let query::Event::Completed = parsed.event {
             // If they were previously leecher, remove from that pool
-            if let Exists::Yes = is_leecher_v2 {
-                post_announce_pipeline.cmd("ZREM").arg(&leechers_key).arg(&parsed.ip_port).ignore();
+            if is_leecher_v2 {
+                post_announce_pipeline.hdel(&leechers_key, &parsed.ip_port).ignore();
                 leech_count_mod -= 1
             }
 
             // Increment the downloaded count for the infohash stats
-            post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("downloaded").arg(1u32).ignore();
+            // post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("downloaded").arg(1u32).ignore();
         }
     } else {
-        // ZADD it regardless to update timestamp for the guy (in redis)
-        post_announce_pipeline.cmd("ZADD").arg(&leechers_key).arg(time_now_ms).arg(&parsed.ip_port).ignore();
-
-        if let Exists::No = is_leecher_v2 {
+        // New leecher, we will HSET it
+        if is_leecher_v2 == false {
             leech_count_mod += 1;
+            post_announce_pipeline.hset(&leechers_key, &parsed.ip_port, 1).ignore();
         };
+
+        // regardless of new or not, we will always set HEXPIRE to 31 min from now
+        post_announce_pipeline.hexpire(&leechers_key, 60 * 31, redis::ExpireOption::NONE, &parsed.ip_port).ignore();
     } 
 
     // Cache miss = query redis
@@ -172,10 +179,12 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             // Cache miss. Lookup from redis
             trace_log!("cache miss");
             let mut p = redis::pipe();
-            let pp = p.cmd("ZRANGEBYSCORE").arg(&seeders_key).arg(max_limit).arg(time_now_ms).arg("LIMIT").arg(0).arg(50)
-            .cmd("ZRANGEBYSCORE").arg(&leechers_key).arg(max_limit).arg(time_now_ms).arg("LIMIT").arg(0).arg(50);
-
-            let (seeders, leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = trace_wrap_v2!(pp.query_async(&mut rc).await, "redis", "seeders_leechers").unwrap();
+            // TODO: this will become 2x HKEYS w/o limit (O(log(N) + M) -> O(N)) => This could potentially be a bit of a regression; e.g. we would now get all 1000 IPs from redis (previously limit 50).
+            // Alternatively: We can HSCAN till 50, which should be very efficient (Basically HSCAN is O(1) per call... , but multiple calls so latency is more? - Need to check).
+            // let pp = p.hkeys(&seeders_key).hkeys(&leechers_key);
+            // let (seeders, leechers) : (Vec<Vec<u8>>, Vec<Vec<u8>>) = trace_wrap_v2!(pp.query_async(&mut rc).await, "redis", "seeders_leechers").unwrap();
+            let seeders = get_hash_keys_scan(&mut rc, &seeders_key, 50).await;
+            let leechers = get_hash_keys_scan(&mut rc, &leechers_key, 50).await;
         
             // endex = end index XD. seems in rust cannot select first 50 elements, or limit to less if vector doesnt have 50
             // e.g. &seeders[0..50] is panicking when seeders len is < 50. Oh well.
@@ -199,11 +208,11 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         // O(1) in redis
         // Can clean up this branching crap
         if seed_count_mod != 0 {
-            post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("seeders").arg(seed_count_mod).ignore();
+            // post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("seeders").arg(seed_count_mod).ignore();
         }
 
         if leech_count_mod != 0 {
-            post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("leechers").arg(leech_count_mod).ignore();
+            // post_announce_pipeline.cmd("HINCRBY").arg(&parsed.info_hash).arg("leechers").arg(leech_count_mod).ignore();
         }
 
         // TODO: Patch cached reply with the count mods?
@@ -288,6 +297,8 @@ fn init_tracer(args: &Args) -> Result<sdktrace::Tracer, TraceError> {
     .install_batch(opentelemetry::runtime::Tokio)
 }
 
+static HOMEPAGE: &'static str = "https://tracker.mywaifu.best";
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let args = Args::parse();
@@ -346,6 +357,12 @@ async fn main() -> std::io::Result<()> {
         })
         .service(healthz)
         .service(announce)
+        .service(web::resource("/scrape").to(|| async {
+            HttpResponse::build(StatusCode::NOT_FOUND).finish()
+        }))
+        .default_service(web::to(|| async {
+            Redirect::to(HOMEPAGE)
+        }))
     })
     .bind((host, port))?
     .max_connection_rate(8192)

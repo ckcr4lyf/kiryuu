@@ -35,7 +35,7 @@ jobs:
           - /qbit-svc/watch:/watch
 
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: kiryuu
 
@@ -90,7 +90,7 @@ jobs:
         run: kill -9 `lsof -i:6969 -t`
 
       - name: Upload tcpdump logs
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: tcpdump_logs
           path: |
@@ -131,7 +131,7 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: kiryuu
 
@@ -141,7 +141,7 @@ jobs:
           ./kiryuu --redis-host 127.0.0.1:6379 &
 
       - name: Execute Gauge
-        uses: docker://ghcr.io/ckcr4lyf/kiryuu-gauge:master
+        uses: docker://ghcr.io/ckcr4lyf/kiryuu-gauge:pr-17
         env:
           KIRYUU_HOST: http://172.17.0.1:6969
           REDIS_HOST: redis://172.17.0.1:6379
