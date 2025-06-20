@@ -4,6 +4,10 @@ Rewrite of [kouko](https://github.com/ckcr4lyf/kouko) in Rust, for better perfor
 
 Kiryuu powers `http://tracker.mywaifu.best:6969/announce`
 
+MyWaifu runs on a Hetzner CPX11 (2vCPU, 2GB RAM) and serves ~150M requests a day (~2000req/s)
+
+![resource usage](https://github.com/user-attachments/assets/cb443b41-6333-4170-8fd7-76615786df6f)
+
 ## Thanks
 
 Many thanks to horsie and anon from Discord, both of whom were extremely helpful in helping me get more familiar with rust, and for offering their heads as I bounced ideas across them.
