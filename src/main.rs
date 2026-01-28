@@ -364,10 +364,21 @@ async fn main() -> std::io::Result<()> {
             Redirect::to(HOMEPAGE)
         }))
     })
-    .bind((host, port))?
-    .max_connection_rate(8192)
+    .backlog(
+        std::env::var("KIRYUU_ACTIX_BACKLOG")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(8192)
+    )
+    .max_connections(
+        std::env::var("KIRYUU_ACTIX_MAX_CONNECTIONS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(2500)
+    )
     .keep_alive(None)
     .client_request_timeout(std::time::Duration::from_millis(1000))
+    .bind((host, port))?
     .run()
     .await;
 }

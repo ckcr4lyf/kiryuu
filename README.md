@@ -31,9 +31,22 @@ $ cargo build --target=x86_64-unknown-linux-musl --release
 
 ```
 
+### Actix tuning
+
+There are a couple of options configurable via environment variables
+
+| **Environment variable**            | **Description**                                | **Default** |
+| ----------------------------------- | ---------------------------------------------- | ---------- |
+| `KIRYUU_ACTIX_BACKLOG`             | Maximum number of pending connections in queue | `8192`     |
+| `KIRYUU_ACTIX_MAX_CONNECTIONS`     | Maximum number of concurrent connections       | `2500`     |
+
 ### ulimits
 
-Make sure you set a high ulimit for open files! By default some VPS might set this to 1024, and then `kiryuu` won't be able to handle high traffic.
+Make sure you set a high ulimit for open files! By default some VPS might set this to 1024, and then `kiryuu` won't be able to handle high traffic, e.g.:
+
+```
+ulimit -n 65535
+```
 
 If you've already started kiryuu, you can identify its PID and then set it via:
 
