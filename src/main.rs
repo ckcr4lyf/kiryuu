@@ -78,9 +78,6 @@ impl redis::FromRedisValue for Exists {
 
 #[get("/announce")]
 async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
-    {
-        data.active_requests.lock().unwrap().add_assign(1);
-    }
     let time_now = SystemTime::now().duration_since(UNIX_EPOCH).expect("fucked up");
     let time_now_ms: i64 = i64::try_from(time_now.as_millis()).expect("fucc");
 
@@ -263,9 +260,6 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         })
     }
 
-    {
-        data.active_requests.lock().unwrap().sub_assign(1);
-    }
     return HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body(final_res);
 }
 
