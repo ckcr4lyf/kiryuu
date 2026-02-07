@@ -4,9 +4,9 @@ mod constants;
 mod req_log;
 mod db;
 
-use actix_web::{dev::Service, error::ErrorNotFound, get, http::{header, StatusCode}, web::{self, Redirect}, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use actix_web::{App, HttpRequest, HttpResponse, HttpServer, Responder, dev::Service, error::ErrorNotFound, get, http::{StatusCode, header}, middleware, rt::time::sleep, web::{self, Redirect}};
 use db::get_hash_keys_scan;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{ops::{Add, AddAssign, Sub, SubAssign}, sync::Mutex, time::{Duration, SystemTime, UNIX_EPOCH}};
 use clap::Parser;
 use std::collections::HashMap;
 
@@ -77,8 +77,10 @@ impl redis::FromRedisValue for Exists {
 }
 
 #[get("/announce")]
-async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {    
-  
+async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
+    {
+        data.active_requests.lock().unwrap().add_assign(1);
+    }
     let time_now = SystemTime::now().duration_since(UNIX_EPOCH).expect("fucked up");
     let time_now_ms: i64 = i64::try_from(time_now.as_millis()).expect("fucc");
 
@@ -261,21 +263,24 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         })
     }
 
+    {
+        data.active_requests.lock().unwrap().sub_assign(1);
+    }
     return HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body(final_res);
 }
 
 #[get("/healthz")]
 async fn healthz(data: web::Data<AppState>) -> HttpResponse {
     let mut rc = data.redis_connection.clone();
-
     match trace_wrap_v2!(redis::cmd("PING").query_async::<()>(&mut rc).await, "redis", "healthcheck") {
-        Ok(_) => HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body("OK"),
+        Ok(_) => HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body("OK\nactive_requests=".to_string() + &data.active_requests.lock().unwrap().to_string()),
         Err(_) => HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).append_header(header::ContentType::plaintext()).body("OOF"),
     }
 }
 
 struct AppState {
     redis_connection: redis::aio::MultiplexedConnection,
+    active_requests: Mutex<u32>,
 }
 
 
@@ -318,6 +323,7 @@ async fn main() -> std::io::Result<()> {
 
     let data = web::Data::new(AppState{
         redis_connection,
+        active_requests: Mutex::new(0),
     });
 
     let port = args.port.unwrap_or_else(|| 6969);
