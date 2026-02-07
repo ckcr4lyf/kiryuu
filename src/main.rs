@@ -357,8 +357,22 @@ async fn main() -> std::io::Result<()> {
                 })  
             }
             #[cfg(not(feature = "tracing"))]
-            {
-                srv.call(req)
+            {                
+                {
+                    let data = req.app_data::<web::Data<AppState>>().unwrap();
+                    data.active_requests.lock().unwrap().add_assign(1);
+                }
+
+                let fut = srv.call(req);
+                async {
+                    let res = fut.await?;
+
+                    {
+                        let data = res.request().app_data::<web::Data<AppState>>().unwrap();
+                        data.active_requests.lock().unwrap().sub_assign(1);
+                    }
+                    return Ok(res);
+                }
             }
         })
         .service(healthz)
