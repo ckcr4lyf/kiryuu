@@ -25,7 +25,12 @@ pub fn url_encoded_to_raw_u8(urlenc: &str) -> [u8; 20] {
     let max = raw_urlenc.len();
 
     while pos_urlenc < max {
-
+        if pos_raw_infohash >= 20 {
+            // We have already filled the 20 bytes of info hash, so we can stop
+            println!("Warning: Info hash is longer than 20 bytes, ignoring extra bytes: {}", urlenc);
+            break;
+        }
+        
         // Current character in info_hash query param
         match raw_urlenc[pos_urlenc] {
             // % , meaning the next two char are hex representation of raw byte

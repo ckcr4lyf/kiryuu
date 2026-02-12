@@ -8,7 +8,7 @@ mod handlers;
 use actix_web::{dev::Service, error::ErrorNotFound, get, http::{header, StatusCode}, web::{self, Redirect}, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use handlers::healthz::healthz;
 use db::get_hash_keys_scan;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{ops::{Add, AddAssign, Sub, SubAssign}, sync::Mutex, time::{Duration, SystemTime, UNIX_EPOCH}};
 use clap::Parser;
 use std::collections::HashMap;
 
@@ -79,8 +79,7 @@ impl redis::FromRedisValue for Exists {
 }
 
 #[get("/announce")]
-async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {    
-  
+async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     let time_now = SystemTime::now().duration_since(UNIX_EPOCH).expect("fucked up");
     let time_now_ms: i64 = i64::try_from(time_now.as_millis()).expect("fucc");
 
@@ -265,9 +264,9 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 
     return HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body(final_res);
 }
-
 struct AppState {
     redis_connection: redis::aio::MultiplexedConnection,
+    active_requests: Mutex<u32>,
 }
 
 
@@ -310,6 +309,7 @@ async fn main() -> std::io::Result<()> {
 
     let data = web::Data::new(AppState{
         redis_connection,
+        active_requests: Mutex::new(0),
     });
 
     let port = args.port.unwrap_or_else(|| 6969);
@@ -343,8 +343,22 @@ async fn main() -> std::io::Result<()> {
                 })  
             }
             #[cfg(not(feature = "tracing"))]
-            {
-                srv.call(req)
+            {                
+                {
+                    let data = req.app_data::<web::Data<AppState>>().unwrap();
+                    data.active_requests.lock().unwrap().add_assign(1);
+                }
+
+                let fut = srv.call(req);
+                async {
+                    let res = fut.await?;
+
+                    {
+                        let data = res.request().app_data::<web::Data<AppState>>().unwrap();
+                        data.active_requests.lock().unwrap().sub_assign(1);
+                    }
+                    return Ok(res);
+                }
             }
         })
         .service(healthz)
