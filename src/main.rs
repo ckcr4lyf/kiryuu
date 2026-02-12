@@ -3,8 +3,10 @@ mod query;
 mod constants;
 mod req_log;
 mod db;
+mod handlers;
 
 use actix_web::{dev::Service, error::ErrorNotFound, get, http::{header, StatusCode}, web::{self, Redirect}, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use handlers::healthz::healthz;
 use db::get_hash_keys_scan;
 use std::time::{SystemTime, UNIX_EPOCH};
 use clap::Parser;
@@ -262,16 +264,6 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
     }
 
     return HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body(final_res);
-}
-
-#[get("/healthz")]
-async fn healthz(data: web::Data<AppState>) -> HttpResponse {
-    let mut rc = data.redis_connection.clone();
-
-    match trace_wrap_v2!(redis::cmd("PING").query_async::<()>(&mut rc).await, "redis", "healthcheck") {
-        Ok(_) => HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body("OK"),
-        Err(_) => HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).append_header(header::ContentType::plaintext()).body("OOF"),
-    }
 }
 
 struct AppState {
