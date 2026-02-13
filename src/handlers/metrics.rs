@@ -34,12 +34,14 @@ pub async fn metrics(data: web::Data<AppState>) -> HttpResponse {
     let cache_hit = cache_hit.unwrap_or(0);
     let announce_count = announce_count.unwrap_or(0);
     let req_duration = req_duration.unwrap_or(0);
+    let active_requests = *data.active_requests.lock().unwrap();
 
     let body = format!(
         "kouko_http_nochange_request_count{} {}\n\
          kouko_http_cache_hit_request_count{} {}\n\
          kouko_http_request_count{} {}\n\
-         kouko_http_request_duration_sum{} {}\n",
+         kouko_http_request_duration_sum{} {}\n\
+         kiryuu_active_request_count {}\n",
         PROMETHEUS_LABELS,
         nochange,
         PROMETHEUS_LABELS,
@@ -48,6 +50,7 @@ pub async fn metrics(data: web::Data<AppState>) -> HttpResponse {
         announce_count,
         PROMETHEUS_LABELS,
         req_duration,
+        active_requests,
     );
 
     HttpResponse::build(StatusCode::OK)
