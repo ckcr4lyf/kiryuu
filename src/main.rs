@@ -7,6 +7,7 @@ mod handlers;
 
 use actix_web::{dev::Service, error::ErrorNotFound, get, http::{header, StatusCode}, web::{self, Redirect}, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use handlers::healthz::healthz;
+use handlers::metrics::metrics;
 use db::get_hash_keys_scan;
 use std::{ops::{Add, AddAssign, Sub, SubAssign}, sync::Mutex, time::{Duration, SystemTime, UNIX_EPOCH}};
 use clap::Parser;
@@ -362,6 +363,7 @@ async fn main() -> std::io::Result<()> {
             }
         })
         .service(healthz)
+        .service(metrics)
         .service(announce)
         .service(web::resource("/scrape").to(|| async {
             HttpResponse::build(StatusCode::NOT_FOUND).finish()
