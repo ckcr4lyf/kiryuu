@@ -1,10 +1,16 @@
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 mod byte_functions;
 mod query;
 mod constants;
 mod req_log;
 mod db;
+mod handlers;
 
-use actix_web::{App, HttpRequest, HttpResponse, HttpServer, Responder, dev::Service, error::ErrorNotFound, get, http::{StatusCode, header}, middleware, rt::time::sleep, web::{self, Redirect}};
+use actix_web::{dev::Service, error::ErrorNotFound, get, http::{header, StatusCode}, web::{self, Redirect}, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use handlers::healthz::healthz;
+use handlers::metrics::metrics;
 use db::get_hash_keys_scan;
 use std::{ops::{Add, AddAssign, Sub, SubAssign}, sync::Mutex, time::{Duration, SystemTime, UNIX_EPOCH}};
 use clap::Parser;
@@ -262,16 +268,6 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 
     return HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body(final_res);
 }
-
-#[get("/healthz")]
-async fn healthz(data: web::Data<AppState>) -> HttpResponse {
-    let mut rc = data.redis_connection.clone();
-    match trace_wrap_v2!(redis::cmd("PING").query_async::<()>(&mut rc).await, "redis", "healthcheck") {
-        Ok(_) => HttpResponse::build(StatusCode::OK).append_header(header::ContentType::plaintext()).body("OK\nactive_requests=".to_string() + &data.active_requests.lock().unwrap().to_string()),
-        Err(_) => HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).append_header(header::ContentType::plaintext()).body("OOF"),
-    }
-}
-
 struct AppState {
     redis_connection: redis::aio::MultiplexedConnection,
     active_requests: Mutex<u32>,
@@ -323,7 +319,16 @@ async fn main() -> std::io::Result<()> {
     let port = args.port.unwrap_or_else(|| 6969);
     let host = args.host.unwrap_or_else(|| "0.0.0.0".to_string());
 
-    return HttpServer::new(move || {
+    let data_metrics = data.clone();
+    let metrics_server = HttpServer::new(move || {
+        App::new()
+            .app_data(data_metrics.clone())
+            .service(metrics)
+    })
+    .bind(("127.0.0.1", 6868))?
+    .run();
+
+    let main_server = HttpServer::new(move || {
         App::new()
         .app_data(data.clone())
         .wrap_fn(|req, srv| {
@@ -393,6 +398,8 @@ async fn main() -> std::io::Result<()> {
     .keep_alive(None)
     .client_request_timeout(std::time::Duration::from_millis(1000))
     .bind((host, port))?
-    .run()
-    .await;
+    .run();
+
+    actix_web::rt::spawn(metrics_server);
+    main_server.await
 }
