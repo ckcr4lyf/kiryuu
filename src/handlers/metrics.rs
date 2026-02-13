@@ -1,4 +1,5 @@
 use actix_web::{get, http::{header, StatusCode}, web, HttpResponse};
+use tikv_jemalloc_ctl::{epoch, stats};
 
 use crate::constants;
 use crate::AppState;
@@ -36,12 +37,22 @@ pub async fn metrics(data: web::Data<AppState>) -> HttpResponse {
     let req_duration = req_duration.unwrap_or(0);
     let active_requests = *data.active_requests.lock().unwrap();
 
+    let (resident_bytes, allocated_bytes) = (|| {
+        epoch::advance().ok()?;
+        let resident = stats::resident::read().ok()?;
+        let allocated = stats::allocated::read().ok()?;
+        Some((resident, allocated))
+    })()
+    .unwrap_or((0, 0));
+
     let body = format!(
         "kiryuu_http_nochange_request_count{} {}\n\
          kiryuu_http_cache_hit_request_count{} {}\n\
          kiryuu_http_request_count{} {}\n\
          kiryuu_http_request_duration_sum{} {}\n\
-         kiryuu_active_request_count {}\n",
+         kiryuu_active_request_count {}\n\
+         kiryuu_resident_bytes {}\n\
+         kiryuu_allocated_bytes {}\n",
         PROMETHEUS_LABELS,
         nochange,
         PROMETHEUS_LABELS,
@@ -51,6 +62,8 @@ pub async fn metrics(data: web::Data<AppState>) -> HttpResponse {
         PROMETHEUS_LABELS,
         req_duration,
         active_requests,
+        resident_bytes,
+        allocated_bytes,
     );
 
     HttpResponse::build(StatusCode::OK)

@@ -8,6 +8,7 @@ description = "A highly performant HTTP Bittorrent tracker"
 
 [dependencies]
 tikv-jemallocator = { version = "0.6", default-features = false }
+tikv-jemalloc-ctl = { version = "0.6", features = ["stats"] }
 actix-web = { version = "4.9.0", default-features = false, features = ["macros"] }
 serde = { version = "1.0.136", features = ["derive"] }
 serde_qs = "0.9.1"
