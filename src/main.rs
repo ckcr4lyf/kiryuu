@@ -316,7 +316,16 @@ async fn main() -> std::io::Result<()> {
     let port = args.port.unwrap_or_else(|| 6969);
     let host = args.host.unwrap_or_else(|| "0.0.0.0".to_string());
 
-    return HttpServer::new(move || {
+    let data_metrics = data.clone();
+    let metrics_server = HttpServer::new(move || {
+        App::new()
+            .app_data(data_metrics.clone())
+            .service(metrics)
+    })
+    .bind(("127.0.0.1", 6868))?
+    .run();
+
+    let main_server = HttpServer::new(move || {
         App::new()
         .app_data(data.clone())
         .wrap_fn(|req, srv| {
@@ -363,7 +372,6 @@ async fn main() -> std::io::Result<()> {
             }
         })
         .service(healthz)
-        .service(metrics)
         .service(announce)
         .service(web::resource("/scrape").to(|| async {
             HttpResponse::build(StatusCode::NOT_FOUND).finish()
@@ -387,6 +395,8 @@ async fn main() -> std::io::Result<()> {
     .keep_alive(None)
     .client_request_timeout(std::time::Duration::from_millis(1000))
     .bind((host, port))?
-    .run()
-    .await;
+    .run();
+
+    actix_web::rt::spawn(metrics_server);
+    main_server.await
 }
