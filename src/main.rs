@@ -273,6 +273,18 @@ struct AppState {
     active_requests: Mutex<u32>,
 }
 
+// RAII guard to decrement `active_requests` when a request/response completes
+struct ActiveRequestGuard {
+    data: web::Data<AppState>,
+}
+impl Drop for ActiveRequestGuard {
+    fn drop(&mut self) {
+        if let Ok(mut cnt) = self.data.active_requests.lock() {
+            cnt.sub_assign(1);
+        }
+    }
+}
+
 
 #[cfg(feature = "tracing")]
 fn init_tracer(args: &Args) -> Result<sdktrace::Tracer, TraceError> {
@@ -356,21 +368,22 @@ async fn main() -> std::io::Result<()> {
                 })  
             }
             #[cfg(not(feature = "tracing"))]
-            {                
+            {
+                let data = req.app_data::<web::Data<AppState>>().unwrap().clone();
                 {
-                    let data = req.app_data::<web::Data<AppState>>().unwrap();
                     data.active_requests.lock().unwrap().add_assign(1);
                 }
 
+                // Create an RAII guard and move it into the async future so it
+                // lives for the duration of the request. If the request future
+                // is dropped (client disconnect), the guard will drop and
+                // decrement the counter.
+                let guard = ActiveRequestGuard { data: data.clone() };
                 let fut = srv.call(req);
-                async {
+                async move {
+                    let _guard = guard; // keep guard alive for the duration of the future
                     let res = fut.await?;
-
-                    {
-                        let data = res.request().app_data::<web::Data<AppState>>().unwrap();
-                        data.active_requests.lock().unwrap().sub_assign(1);
-                    }
-                    return Ok(res);
+                    Ok(res)
                 }
             }
         })
