@@ -1,14 +1,19 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
+pub enum Action {
+    Block,
+    Redirect(String),
+}
+
 pub struct Blacklist {
-    hashes: HashSet<[u8; 20]>,
+    entries: HashMap<[u8; 20], Action>,
 }
 
 impl Blacklist {
-    pub fn contains(&self, hash: &[u8; 20]) -> bool {
-        self.hashes.contains(hash)
+    pub fn lookup(&self, hash: &[u8; 20]) -> Option<&Action> {
+        self.entries.get(hash)
     }
 }
 
@@ -39,7 +44,7 @@ fn ascii_to_nibble(ascii: u8) -> Option<u8> {
 pub fn load_blacklist(path: &str) -> std::io::Result<Blacklist> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
-    let mut hashes = HashSet::new();
+    let mut entries = HashMap::new();
 
     for line in reader.lines() {
         let line = line?;
@@ -47,10 +52,15 @@ pub fn load_blacklist(path: &str) -> std::io::Result<Blacklist> {
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        if let Some(bytes) = hex_to_bytes(line) {
-            hashes.insert(bytes);
+        if let Some((hash_str, rest)) = line.split_once(',') {
+            let url = rest.trim();
+            if let Some(bytes) = hex_to_bytes(hash_str.trim()) {
+                entries.insert(bytes, Action::Redirect(url.to_string()));
+            }
+        } else if let Some(bytes) = hex_to_bytes(line) {
+            entries.insert(bytes, Action::Block);
         }
     }
 
-    Ok(Blacklist { hashes })
+    Ok(Blacklist { entries })
 }

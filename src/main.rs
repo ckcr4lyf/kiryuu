@@ -13,7 +13,7 @@ use actix_web::{dev::Service, error::ErrorNotFound, get, http::{header, StatusCo
 use handlers::healthz::healthz;
 use handlers::metrics::metrics;
 use db::get_hash_keys_scan;
-use blacklist::{Blacklist, load_blacklist};
+use blacklist::{Blacklist, Action, load_blacklist};
 use std::{ops::{Add, AddAssign, Sub, SubAssign}, sync::Mutex, time::{Duration, SystemTime, UNIX_EPOCH}};
 use clap::Parser;
 use std::collections::HashMap;
@@ -119,8 +119,13 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         }
     };
 
-    if data.blacklist.contains(&parsed.info_hash.0) {
-        return HttpResponse::build(StatusCode::UNAVAILABLE_FOR_LEGAL_REASONS).finish();
+    if let Some(action) = data.blacklist.lookup(&parsed.info_hash.0) {
+        return match action {
+            Action::Block => HttpResponse::build(StatusCode::UNAVAILABLE_FOR_LEGAL_REASONS).finish(),
+            Action::Redirect(url) => HttpResponse::TemporaryRedirect()
+                .insert_header((header::LOCATION, url.as_str()))
+                .finish(),
+        };
     }
 
     // Get seeders & leechers
