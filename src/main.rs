@@ -55,9 +55,9 @@ struct Args {
     #[arg(long)]
     otlp_endpoint: Option<String>,
 
-    /// Path to blacklist file (one 40-char infohash per line)
+    /// Path to blacklist file (one 40-char infohash per line, optional comma+redirect URL)
     #[arg(long)]
-    blacklist: String,
+    blacklist: Option<String>,
 }
 
 // If not more than 31, possible not online
@@ -339,7 +339,10 @@ async fn main() -> std::io::Result<()> {
     let redis = redis::Client::open(redis_host).unwrap();
     let redis_connection = redis.get_multiplexed_tokio_connection().await.unwrap();
 
-    let blacklist = load_blacklist(&args.blacklist).unwrap();
+    let blacklist = match &args.blacklist {
+        Some(path) => load_blacklist(path).unwrap(),
+        None => Blacklist::new(),
+    };
 
     let data = web::Data::new(AppState{
         redis_connection,

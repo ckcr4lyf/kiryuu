@@ -12,6 +12,12 @@ pub struct Blacklist {
 }
 
 impl Blacklist {
+    pub fn new() -> Self {
+        Blacklist {
+            entries: HashMap::new(),
+        }
+    }
+
     pub fn lookup(&self, hash: &[u8; 20]) -> Option<&Action> {
         self.entries.get(hash)
     }
