@@ -7,11 +7,13 @@ mod constants;
 mod req_log;
 mod db;
 mod handlers;
+mod blacklist;
 
 use actix_web::{dev::Service, error::ErrorNotFound, get, http::{header, StatusCode}, web::{self, Redirect}, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use handlers::healthz::healthz;
 use handlers::metrics::metrics;
 use db::get_hash_keys_scan;
+use blacklist::{Blacklist, load_blacklist};
 use std::{ops::{Add, AddAssign, Sub, SubAssign}, sync::Mutex, time::{Duration, SystemTime, UNIX_EPOCH}};
 use clap::Parser;
 use std::collections::HashMap;
@@ -112,6 +114,10 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             }
         }
     };
+
+    if data.blacklist.contains(&parsed.info_hash.0) {
+        return HttpResponse::build(StatusCode::UNAVAILABLE_FOR_LEGAL_REASONS).finish();
+    }
 
     // Get seeders & leechers
     let mut rc = data.redis_connection.clone();
@@ -271,6 +277,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 struct AppState {
     redis_connection: redis::aio::MultiplexedConnection,
     active_requests: Mutex<u32>,
+    blacklist: Blacklist,
 }
 
 // RAII guard to decrement `active_requests` when a request/response completes
@@ -323,9 +330,12 @@ async fn main() -> std::io::Result<()> {
     let redis = redis::Client::open(redis_host).unwrap();
     let redis_connection = redis.get_multiplexed_tokio_connection().await.unwrap();
 
+    let blacklist = load_blacklist("/tmp/blacklist.txt").unwrap();
+
     let data = web::Data::new(AppState{
         redis_connection,
         active_requests: Mutex::new(0),
+        blacklist,
     });
 
     let port = args.port.unwrap_or_else(|| 6969);
