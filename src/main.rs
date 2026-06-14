@@ -7,11 +7,13 @@ mod constants;
 mod req_log;
 mod db;
 mod handlers;
+mod blacklist;
 
 use actix_web::{dev::Service, error::ErrorNotFound, get, http::{header, StatusCode}, web::{self, Redirect}, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use handlers::healthz::healthz;
 use handlers::metrics::metrics;
 use db::get_hash_keys_scan;
+use blacklist::{Blacklist, Action, load_blacklist};
 use std::{ops::{Add, AddAssign, Sub, SubAssign}, sync::Mutex, time::{Duration, SystemTime, UNIX_EPOCH}};
 use clap::Parser;
 use std::collections::HashMap;
@@ -26,7 +28,7 @@ use opentelemetry::trace::Span;
 // This will acutally always be imported, has the feature flag
 // inside the macro.
 mod tracing;
-/// Simple
+/// A highly performant HTTP Bittorrent tracker
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -52,6 +54,10 @@ struct Args {
     /// Address of OTLP consumer. Default: http://127.0.0.1:4317 (Grafana Alloy)
     #[arg(long)]
     otlp_endpoint: Option<String>,
+
+    /// Path to blacklist file (one 40-char infohash per line, optional comma+redirect URL)
+    #[arg(long)]
+    blacklist: Option<String>,
 }
 
 // If not more than 31, possible not online
@@ -112,6 +118,15 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             }
         }
     };
+
+    if let Some(action) = data.blacklist.lookup(&parsed.info_hash.0) {
+        return match action {
+            Action::Block => HttpResponse::build(StatusCode::UNAVAILABLE_FOR_LEGAL_REASONS).finish(),
+            Action::Redirect(url) => HttpResponse::TemporaryRedirect()
+                .insert_header((header::LOCATION, url.as_str()))
+                .finish(),
+        };
+    }
 
     // Get seeders & leechers
     let mut rc = data.redis_connection.clone();
@@ -271,6 +286,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
 struct AppState {
     redis_connection: redis::aio::MultiplexedConnection,
     active_requests: Mutex<u32>,
+    blacklist: Blacklist,
 }
 
 // RAII guard to decrement `active_requests` when a request/response completes
@@ -323,9 +339,15 @@ async fn main() -> std::io::Result<()> {
     let redis = redis::Client::open(redis_host).unwrap();
     let redis_connection = redis.get_multiplexed_tokio_connection().await.unwrap();
 
+    let blacklist = match &args.blacklist {
+        Some(path) => load_blacklist(path).unwrap(),
+        None => Blacklist::new(),
+    };
+
     let data = web::Data::new(AppState{
         redis_connection,
         active_requests: Mutex::new(0),
+        blacklist,
     });
 
     let port = args.port.unwrap_or_else(|| 6969);
