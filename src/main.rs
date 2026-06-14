@@ -28,7 +28,7 @@ use opentelemetry::trace::Span;
 // This will acutally always be imported, has the feature flag
 // inside the macro.
 mod tracing;
-/// Simple
+/// A highly performant HTTP Bittorrent tracker
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -54,6 +54,10 @@ struct Args {
     /// Address of OTLP consumer. Default: http://127.0.0.1:4317 (Grafana Alloy)
     #[arg(long)]
     otlp_endpoint: Option<String>,
+
+    /// Path to blacklist file (one 40-char infohash per line)
+    #[arg(long)]
+    blacklist: String,
 }
 
 // If not more than 31, possible not online
@@ -330,7 +334,7 @@ async fn main() -> std::io::Result<()> {
     let redis = redis::Client::open(redis_host).unwrap();
     let redis_connection = redis.get_multiplexed_tokio_connection().await.unwrap();
 
-    let blacklist = load_blacklist("/tmp/blacklist.txt").unwrap();
+    let blacklist = load_blacklist(&args.blacklist).unwrap();
 
     let data = web::Data::new(AppState{
         redis_connection,
