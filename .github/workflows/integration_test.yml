@@ -35,6 +35,7 @@ jobs:
           - /qbit-svc/watch:/watch
 
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: kiryuu
@@ -42,7 +43,7 @@ jobs:
       - name: Run kiryuu (in background)
         run: |
           chmod +x kiryuu
-          ./kiryuu --redis-host 127.0.0.1:6379 &
+          ./kiryuu --redis-host 127.0.0.1:6379 --blacklist __fixtures__/blacklist.txt &
 
       - name: chmod the qbit seeder volumes
         run: sudo chmod -R 777 /qbit-svc
@@ -131,6 +132,7 @@ jobs:
           --health-retries 5
 
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: kiryuu
@@ -138,7 +140,7 @@ jobs:
       - name: Run kiryuu (in background)
         run: |
           chmod +x kiryuu
-          ./kiryuu --redis-host 127.0.0.1:6379 &
+          ./kiryuu --redis-host 127.0.0.1:6379 --blacklist __fixtures__/blacklist.txt &
 
       - name: Execute Gauge
         uses: docker://ghcr.io/ckcr4lyf/kiryuu-gauge@sha256:663f1c0f8937ec45ce959da33c67b233772b5c33c7e20024ded5e34ff33b09c9
