@@ -40,18 +40,26 @@ There are a couple of options configurable via environment variables
 | `KIRYUU_ACTIX_BACKLOG`             | Maximum number of pending connections in queue | `8192`     |
 | `KIRYUU_ACTIX_MAX_CONNECTIONS`     | Maximum number of concurrent connections       | `2500`     |
 
+From some testing on Hetzner, it works best when run as:
+
+```
+KIRYUU_ACTIX_BACKLOG=4096 KIRYUU_ACTIX_MAX_CONNECTIONS=500 ./kiryuu --redis-connection-string unix:///tmp/redis.sock --blacklist /tmp/blacklist.txt
+```
+
+With the ulimit for open files set to `4096`. For more around tuning, [see this issue](https://github.com/ckcr4lyf/kiryuu/issues/53)
+
 ### ulimits
 
 Make sure you set a high ulimit for open files! By default some VPS might set this to 1024, and then `kiryuu` won't be able to handle high traffic, e.g.:
 
 ```
-ulimit -n 65535
+ulimit -n 4096
 ```
 
 If you've already started kiryuu, you can identify its PID and then set it via:
 
 ```
-$ prlimit --pid PID_HERE --nofile=16384:16384
+$ prlimit --pid PID_HERE --nofile=4096:4096
 ```
 
 ## Testing
