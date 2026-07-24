@@ -12,15 +12,20 @@ tikv-jemalloc-ctl = { version = "0.6", features = ["stats"] }
 actix-web = { version = "4.9.0", default-features = false, features = ["macros"] }
 serde = { version = "1.0.136", features = ["derive"] }
 serde_qs = "0.9.1"
-redis = { version = "0.27.5", features = ["aio", "tokio-comp", "connection-manager"] }
+dashmap = "6.1.0"
+parking_lot = "0.12.3"
+ahash = "0.8.11"
 rand = "*"
 clap = { version = "4.0.30", features = ["derive"] }
+redis = { version = "0.27.5", features = ["aio", "tokio-comp", "connection-manager"], optional = true }
 opentelemetry = { version = "0.19", features = ["rt-tokio"], optional = true }
 opentelemetry-jaeger = { version = "0.18", features = ["rt-tokio"], optional = true }
 opentelemetry-otlp = { version = "0.12.0", features = ["http-proto", "reqwest-client", "reqwest-rustls"], optional = true }
 
 [features]
+default = ["redis-examples"]
 tracing = ["dep:opentelemetry", "dep:opentelemetry-jaeger", "dep:opentelemetry-otlp"]
+redis-examples = ["dep:redis"]
 
 [[example]]
 name = "redis_zscore"
