@@ -8,7 +8,7 @@ use dashmap::DashMap;
 
 use crate::query;
 
-pub use stats::TrackerStats;
+pub use stats::{TrackerStats, HISTOGRAM_BUCKET_UPPER_BOUNDS_SECS};
 
 pub type InfoHash = [u8; 20];
 pub type PeerId = [u8; 6];
@@ -105,7 +105,7 @@ impl TrackerStore {
         }
     }
 
-    pub fn handle_announce(&self, input: AnnounceInput, req_duration_ms: i64) -> Vec<u8> {
+    pub fn handle_announce(&self, input: AnnounceInput, started: Instant) -> Vec<u8> {
         let now = Instant::now();
 
         self.torrents
@@ -168,7 +168,7 @@ impl TrackerStore {
         }
 
         drop(torrent_ref);
-        self.stats.record_announce(req_duration_ms);
+        self.stats.record_announce(started.elapsed());
         final_res
     }
 
@@ -328,6 +328,11 @@ impl Default for TrackerStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Instant;
+
+    fn announce(store: &TrackerStore, input: AnnounceInput) -> Vec<u8> {
+        store.handle_announce(input, Instant::now())
+    }
 
     #[test]
     fn seeder_announce_registers_peer() {
@@ -335,14 +340,14 @@ mod tests {
         let hash = [0x41u8; 20];
         let peer = [127, 0, 0, 1, 17, 0x5c];
 
-        store.handle_announce(
+        announce(
+            &store,
             AnnounceInput {
                 info_hash: hash,
                 peer,
                 is_seeding: true,
                 event: AnnounceEvent::Unknown,
             },
-            0,
         );
 
         assert!(store.peer_exists(hash, PeerPool::Seeder, peer));
@@ -354,23 +359,23 @@ mod tests {
         let hash = [0x42u8; 20];
         let peer = [127, 0, 0, 1, 17, 0x5c];
 
-        store.handle_announce(
+        announce(
+            &store,
             AnnounceInput {
                 info_hash: hash,
                 peer,
                 is_seeding: true,
                 event: AnnounceEvent::Unknown,
             },
-            0,
         );
-        store.handle_announce(
+        announce(
+            &store,
             AnnounceInput {
                 info_hash: hash,
                 peer,
                 is_seeding: true,
                 event: AnnounceEvent::Stopped,
             },
-            0,
         );
 
         assert!(!store.peer_exists(hash, PeerPool::Seeder, peer));
@@ -382,23 +387,23 @@ mod tests {
         let hash = [0x43u8; 20];
         let peer = [127, 0, 0, 1, 17, 0x5c];
 
-        store.handle_announce(
+        announce(
+            &store,
             AnnounceInput {
                 info_hash: hash,
                 peer,
                 is_seeding: false,
                 event: AnnounceEvent::Unknown,
             },
-            0,
         );
-        store.handle_announce(
+        announce(
+            &store,
             AnnounceInput {
                 info_hash: hash,
                 peer,
                 is_seeding: true,
                 event: AnnounceEvent::Completed,
             },
-            0,
         );
 
         assert!(store.peer_exists(hash, PeerPool::Seeder, peer));
@@ -413,14 +418,14 @@ mod tests {
         let caller = [127, 0, 0, 1, 17, 0x5c];
 
         store.seed_peers(hash, PeerPool::Seeder, &[peer]);
-        let body = store.handle_announce(
+        let body = announce(
+            &store,
             AnnounceInput {
                 info_hash: hash,
                 peer: caller,
                 is_seeding: false,
                 event: AnnounceEvent::Unknown,
             },
-            0,
         );
 
         assert!(body.windows(6).any(|w| w == peer));
@@ -432,14 +437,14 @@ mod tests {
         let hash = [0x55u8; 20];
         let peer = [127, 0, 0, 1, 17, 0x5c];
 
-        store.handle_announce(
+        announce(
+            &store,
             AnnounceInput {
                 info_hash: hash,
                 peer,
                 is_seeding: true,
                 event: AnnounceEvent::Unknown,
             },
-            0,
         );
         assert_eq!(store.torrent_count(), 1);
 
@@ -454,14 +459,14 @@ mod tests {
         let hash = [0x56u8; 20];
         let peer = [127, 0, 0, 1, 17, 0x5c];
 
-        store.handle_announce(
+        announce(
+            &store,
             AnnounceInput {
                 info_hash: hash,
                 peer,
                 is_seeding: true,
                 event: AnnounceEvent::Unknown,
             },
-            0,
         );
 
         assert_eq!(store.sweep_stale_torrents_at(Instant::now()), 0);
