@@ -17,9 +17,9 @@ use handlers::test_seed::{test_peer_exists, test_seed};
 use blacklist::{Blacklist, Action, load_blacklist};
 use parking_lot::Mutex;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 use clap::Parser;
-use store::{AnnounceEvent, AnnounceInput, TrackerStore};
+use store::{AnnounceEvent, AnnounceInput, TrackerStore, SWEEP_INTERVAL};
 
 #[cfg(feature = "tracing")]
 use opentelemetry::{global, sdk::trace as sdktrace, trace::{TraceContextExt, FutureExt, TraceError, Tracer, get_active_span}, Key, KeyValue};
@@ -53,8 +53,7 @@ struct Args {
 
 #[get("/announce")]
 async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
-    let time_now = SystemTime::now().duration_since(UNIX_EPOCH).expect("time went backwards");
-    let time_now_ms: i64 = i64::try_from(time_now.as_millis()).expect("timestamp overflow");
+    let started = Instant::now();
 
     let query = req.query_string();
     let peer_addr = req.peer_addr();
@@ -95,7 +94,6 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
         query::Event::Unknown => AnnounceEvent::Unknown,
     };
 
-    let time_before_store = SystemTime::now().duration_since(UNIX_EPOCH).expect("time went backwards");
     let body = data.store.handle_announce(
         AnnounceInput {
             info_hash: parsed.info_hash.0,
@@ -103,7 +101,7 @@ async fn announce(req: HttpRequest, data: web::Data<AppState>) -> HttpResponse {
             is_seeding: parsed.is_seeding,
             event,
         },
-        i64::try_from(time_before_store.as_millis()).expect("timestamp overflow") - time_now_ms,
+        started,
     );
 
     #[cfg(feature = "tracing")]
@@ -171,6 +169,17 @@ async fn main() -> std::io::Result<()> {
     };
 
     let store = Arc::new(TrackerStore::new());
+
+    {
+        let store_sweeper = store.clone();
+        actix_web::rt::spawn(async move {
+            let mut interval = actix_web::rt::time::interval(SWEEP_INTERVAL);
+            loop {
+                interval.tick().await;
+                store_sweeper.sweep_stale_torrents();
+            }
+        });
+    }
 
     let data = web::Data::new(AppState {
         store,
