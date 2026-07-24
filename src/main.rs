@@ -19,7 +19,7 @@ use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use clap::Parser;
-use store::{AnnounceEvent, AnnounceInput, TrackerStore};
+use store::{AnnounceEvent, AnnounceInput, TrackerStore, SWEEP_INTERVAL};
 
 #[cfg(feature = "tracing")]
 use opentelemetry::{global, sdk::trace as sdktrace, trace::{TraceContextExt, FutureExt, TraceError, Tracer, get_active_span}, Key, KeyValue};
@@ -171,6 +171,17 @@ async fn main() -> std::io::Result<()> {
     };
 
     let store = Arc::new(TrackerStore::new());
+
+    {
+        let store_sweeper = store.clone();
+        actix_web::rt::spawn(async move {
+            let mut interval = actix_web::rt::time::interval(SWEEP_INTERVAL);
+            loop {
+                interval.tick().await;
+                store_sweeper.sweep_stale_torrents();
+            }
+        });
+    }
 
     let data = web::Data::new(AppState {
         store,

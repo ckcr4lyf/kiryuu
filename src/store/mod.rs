@@ -16,6 +16,7 @@ pub type PeerId = [u8; 6];
 pub const PEER_TTL: Duration = Duration::from_secs(60 * 31);
 pub const TORRENT_TTL: Duration = Duration::from_secs(60 * 31);
 pub const CACHE_TTL: Duration = Duration::from_secs(60 * 30);
+pub const SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 pub const PEER_SAMPLE_LIMIT: usize = 50;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -167,7 +168,6 @@ impl TrackerStore {
         }
 
         drop(torrent_ref);
-        self.maybe_sweep_torrent(input.info_hash, now);
         self.stats.record_announce(req_duration_ms);
         final_res
     }
@@ -237,6 +237,8 @@ impl TrackerStore {
         };
 
         if torrent_ref.is_stale(now) {
+            drop(torrent_ref);
+            self.torrents.remove(&info_hash);
             return false;
         }
 
@@ -286,13 +288,34 @@ impl TrackerStore {
         self.torrents.len()
     }
 
-    fn maybe_sweep_torrent(&self, info_hash: InfoHash, now: Instant) {
-        if let Some(torrent_ref) = self.torrents.get(&info_hash) {
-            if torrent_ref.is_stale(now) {
-                drop(torrent_ref);
-                self.torrents.remove(&info_hash);
-            }
+    /// Approximate peer totals from map sizes (may include not-yet-purged expired peers).
+    pub fn peer_totals(&self) -> (usize, usize, usize) {
+        let mut seeders = 0usize;
+        let mut leechers = 0usize;
+
+        for torrent in self.torrents.iter() {
+            seeders += torrent.seeders.len();
+            leechers += torrent.leechers.len();
         }
+
+        (self.torrents.len(), seeders, leechers)
+    }
+
+    /// Remove torrents with no activity for longer than `TORRENT_TTL`.
+    pub fn sweep_stale_torrents(&self) -> usize {
+        self.sweep_stale_torrents_at(Instant::now())
+    }
+
+    fn sweep_stale_torrents_at(&self, now: Instant) -> usize {
+        let mut removed = 0usize;
+        self.torrents.retain(|_, torrent| {
+            let keep = !torrent.is_stale(now);
+            if !keep {
+                removed += 1;
+            }
+            keep
+        });
+        removed
     }
 }
 
@@ -401,5 +424,64 @@ mod tests {
         );
 
         assert!(body.windows(6).any(|w| w == peer));
+    }
+
+    #[test]
+    fn sweep_removes_stale_torrents() {
+        let store = TrackerStore::new();
+        let hash = [0x55u8; 20];
+        let peer = [127, 0, 0, 1, 17, 0x5c];
+
+        store.handle_announce(
+            AnnounceInput {
+                info_hash: hash,
+                peer,
+                is_seeding: true,
+                event: AnnounceEvent::Unknown,
+            },
+            0,
+        );
+        assert_eq!(store.torrent_count(), 1);
+
+        let after_ttl = Instant::now() + TORRENT_TTL + Duration::from_secs(1);
+        assert_eq!(store.sweep_stale_torrents_at(after_ttl), 1);
+        assert_eq!(store.torrent_count(), 0);
+    }
+
+    #[test]
+    fn sweep_keeps_active_torrents() {
+        let store = TrackerStore::new();
+        let hash = [0x56u8; 20];
+        let peer = [127, 0, 0, 1, 17, 0x5c];
+
+        store.handle_announce(
+            AnnounceInput {
+                info_hash: hash,
+                peer,
+                is_seeding: true,
+                event: AnnounceEvent::Unknown,
+            },
+            0,
+        );
+
+        assert_eq!(store.sweep_stale_torrents_at(Instant::now()), 0);
+        assert_eq!(store.torrent_count(), 1);
+    }
+
+    #[test]
+    fn peer_totals_counts_seeders_and_leechers() {
+        let store = TrackerStore::new();
+        let hash = [0x57u8; 20];
+        let seeder = [10, 0, 0, 1, 0x11, 0x5c];
+        let leecher = [10, 0, 0, 2, 0x11, 0x5c];
+
+        store.seed_peers(hash, PeerPool::Seeder, &[seeder]);
+        store.seed_peers(hash, PeerPool::Leecher, &[leecher]);
+
+        let (torrents, seeders, leechers) = store.peer_totals();
+        assert_eq!(torrents, 1);
+        assert_eq!(seeders, 1);
+        assert_eq!(leechers, 1);
+        assert_eq!(seeders + leechers, 2);
     }
 }

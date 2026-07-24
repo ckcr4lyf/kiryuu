@@ -9,6 +9,8 @@ const PROMETHEUS_LABELS: &str = r#"{status_code="200", method="GET", path="annou
 pub async fn metrics(data: web::Data<AppState>) -> HttpResponse {
     let (nochange, cache_hit, announce_count, req_duration) = data.store.stats.snapshot();
     let active_requests = *data.active_requests.lock();
+    let (torrent_count, seeder_count, leecher_count) = data.store.peer_totals();
+    let peer_count = seeder_count + leecher_count;
 
     let (resident_bytes, allocated_bytes) = (|| {
         epoch::advance().ok()?;
@@ -24,6 +26,10 @@ pub async fn metrics(data: web::Data<AppState>) -> HttpResponse {
          kiryuu_http_request_count{} {}\n\
          kiryuu_http_request_duration_sum{} {}\n\
          kiryuu_active_request_count {}\n\
+         kiryuu_torrent_count {}\n\
+         kiryuu_peer_count {}\n\
+         kiryuu_seeder_count {}\n\
+         kiryuu_leecher_count {}\n\
          kiryuu_resident_bytes {}\n\
          kiryuu_allocated_bytes {}\n",
         PROMETHEUS_LABELS,
@@ -35,6 +41,10 @@ pub async fn metrics(data: web::Data<AppState>) -> HttpResponse {
         PROMETHEUS_LABELS,
         req_duration,
         active_requests,
+        torrent_count,
+        peer_count,
+        seeder_count,
+        leecher_count,
         resident_bytes,
         allocated_bytes,
     );
