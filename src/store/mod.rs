@@ -15,9 +15,12 @@ pub type PeerId = [u8; 6];
 
 pub const PEER_TTL: Duration = Duration::from_secs(60 * 31);
 pub const TORRENT_TTL: Duration = Duration::from_secs(60 * 31);
-pub const CACHE_TTL: Duration = Duration::from_secs(60 * 30);
-pub const SWEEP_INTERVAL: Duration = Duration::from_secs(60);
+pub const SWEEP_INTERVAL: Duration = Duration::from_secs(10);
+/// Max DashMap entries examined per sweep tick (bounds page-fault storms while swapping).
+pub const SWEEP_SCAN: usize = 250_000;
 pub const PEER_SAMPLE_LIMIT: usize = 50;
+/// Promote from inline peers to HashMap beyond this size.
+const INLINE_PEER_CAP: usize = 8;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PeerPool {
@@ -39,61 +42,243 @@ pub struct AnnounceInput {
     pub event: AnnounceEvent,
 }
 
-struct CachedReply {
-    body: Vec<u8>,
-    expires_at: Instant,
+/// Packed peer metadata: bit31 = seeder, bits0..30 = expiry seconds since store epoch.
+#[derive(Clone, Copy, Debug)]
+struct PeerMeta(u32);
+
+impl PeerMeta {
+    fn new(is_seeder: bool, expires_at: u32) -> Self {
+        let flag = if is_seeder { 1u32 << 31 } else { 0 };
+        Self(flag | (expires_at & 0x7fff_ffff))
+    }
+
+    fn is_seeder(self) -> bool {
+        self.0 & (1 << 31) != 0
+    }
+
+    fn expires_at(self) -> u32 {
+        self.0 & 0x7fff_ffff
+    }
+
+    fn is_live(self, now: u32) -> bool {
+        self.expires_at() > now
+    }
 }
 
-struct Torrent {
-    seeders: HashMap<PeerId, Instant>,
-    leechers: HashMap<PeerId, Instant>,
-    cache: Option<CachedReply>,
-    last_activity: Instant,
+/// Dense storage for the common case (1–few peers). Avoids HashMap overhead per torrent.
+#[derive(Clone, Debug, Default)]
+enum Peers {
+    #[default]
+    Empty,
+    /// Inline list, length in `len` (1..=INLINE_PEER_CAP).
+    Inline {
+        entries: [(PeerId, PeerMeta); INLINE_PEER_CAP],
+        len: u8,
+    },
+    Map(HashMap<PeerId, PeerMeta>),
 }
 
-impl Torrent {
-    fn new(now: Instant) -> Self {
-        Self {
-            seeders: HashMap::new(),
-            leechers: HashMap::new(),
-            cache: None,
-            last_activity: now,
+impl Peers {
+    fn len(&self) -> usize {
+        match self {
+            Peers::Empty => 0,
+            Peers::Inline { len, .. } => *len as usize,
+            Peers::Map(map) => map.len(),
         }
     }
 
-    fn touch(&mut self, now: Instant) {
-        self.last_activity = now;
+    fn get(&self, peer: &PeerId) -> Option<PeerMeta> {
+        match self {
+            Peers::Empty => None,
+            Peers::Inline { entries, len } => entries[..*len as usize]
+                .iter()
+                .find(|(id, _)| id == peer)
+                .map(|(_, meta)| *meta),
+            Peers::Map(map) => map.get(peer).copied(),
+        }
     }
 
-    fn is_stale(&self, now: Instant) -> bool {
-        now > self.last_activity + TORRENT_TTL
-    }
-
-    fn purge_expired(&mut self, now: Instant) {
-        self.seeders.retain(|_, exp| *exp > now);
-        self.leechers.retain(|_, exp| *exp > now);
-        if let Some(cache) = &self.cache {
-            if cache.expires_at <= now {
-                self.cache = None;
+    fn insert(&mut self, peer: PeerId, meta: PeerMeta) {
+        match self {
+            Peers::Empty => {
+                let mut entries = [([0u8; 6], PeerMeta(0)); INLINE_PEER_CAP];
+                entries[0] = (peer, meta);
+                *self = Peers::Inline { entries, len: 1 };
+            }
+            Peers::Inline { entries, len } => {
+                let n = *len as usize;
+                if let Some(slot) = entries[..n].iter_mut().find(|(id, _)| *id == peer) {
+                    slot.1 = meta;
+                    return;
+                }
+                if n < INLINE_PEER_CAP {
+                    entries[n] = (peer, meta);
+                    *len += 1;
+                    return;
+                }
+                let mut map = HashMap::with_capacity(INLINE_PEER_CAP * 2);
+                for (id, m) in entries.iter().take(n) {
+                    map.insert(*id, *m);
+                }
+                map.insert(peer, meta);
+                *self = Peers::Map(map);
+            }
+            Peers::Map(map) => {
+                map.insert(peer, meta);
             }
         }
     }
 
-    fn peer_expiry(now: Instant) -> Instant {
-        now + PEER_TTL
+    fn remove(&mut self, peer: &PeerId) -> bool {
+        match self {
+            Peers::Empty => false,
+            Peers::Inline { entries, len } => {
+                let n = *len as usize;
+                let Some(idx) = entries[..n].iter().position(|(id, _)| id == peer) else {
+                    return false;
+                };
+                entries[idx] = entries[n - 1];
+                *len -= 1;
+                if *len == 0 {
+                    *self = Peers::Empty;
+                }
+                true
+            }
+            Peers::Map(map) => {
+                let removed = map.remove(peer).is_some();
+                if map.is_empty() {
+                    *self = Peers::Empty;
+                }
+                removed
+            }
+        }
     }
 
-    fn sample_peers(map: &HashMap<PeerId, Instant>, now: Instant, limit: usize) -> Vec<[u8; 6]> {
-        map.iter()
-            .filter(|(_, exp)| **exp > now)
-            .take(limit)
-            .map(|(peer, _)| *peer)
-            .collect()
+    fn purge_expired(&mut self, now: u32) {
+        match self {
+            Peers::Empty => {}
+            Peers::Inline { entries, len } => {
+                let mut write = 0usize;
+                let n = *len as usize;
+                for read in 0..n {
+                    if entries[read].1.is_live(now) {
+                        entries[write] = entries[read];
+                        write += 1;
+                    }
+                }
+                *len = write as u8;
+                if *len == 0 {
+                    *self = Peers::Empty;
+                }
+            }
+            Peers::Map(map) => {
+                map.retain(|_, meta| meta.is_live(now));
+                if map.is_empty() {
+                    *self = Peers::Empty;
+                }
+            }
+        }
+    }
+
+    fn counts(&self, now: u32) -> (usize, usize) {
+        let mut seeders = 0usize;
+        let mut leechers = 0usize;
+        self.for_each_live(now, |_, meta| {
+            if meta.is_seeder() {
+                seeders += 1;
+            } else {
+                leechers += 1;
+            }
+        });
+        (seeders, leechers)
+    }
+
+    fn sample(&self, now: u32, want_seeders: bool, limit: usize) -> Vec<[u8; 6]> {
+        let mut out = Vec::with_capacity(limit.min(16));
+        self.for_each_live(now, |peer, meta| {
+            if out.len() >= limit {
+                return;
+            }
+            if meta.is_seeder() == want_seeders {
+                out.push(peer);
+            }
+        });
+        out
+    }
+
+    fn for_each_live(&self, now: u32, mut f: impl FnMut(PeerId, PeerMeta)) {
+        match self {
+            Peers::Empty => {}
+            Peers::Inline { entries, len } => {
+                for (peer, meta) in entries[..*len as usize].iter() {
+                    if meta.is_live(now) {
+                        f(*peer, *meta);
+                    }
+                }
+            }
+            Peers::Map(map) => {
+                for (peer, meta) in map.iter() {
+                    if meta.is_live(now) {
+                        f(*peer, *meta);
+                    }
+                }
+            }
+        }
+    }
+
+    fn raw_counts(&self) -> (usize, usize) {
+        let mut seeders = 0usize;
+        let mut leechers = 0usize;
+        match self {
+            Peers::Empty => {}
+            Peers::Inline { entries, len } => {
+                for (_, meta) in entries[..*len as usize].iter() {
+                    if meta.is_seeder() {
+                        seeders += 1;
+                    } else {
+                        leechers += 1;
+                    }
+                }
+            }
+            Peers::Map(map) => {
+                for meta in map.values() {
+                    if meta.is_seeder() {
+                        seeders += 1;
+                    } else {
+                        leechers += 1;
+                    }
+                }
+            }
+        }
+        (seeders, leechers)
+    }
+}
+
+struct Torrent {
+    peers: Peers,
+    last_activity: u32,
+}
+
+impl Torrent {
+    fn new(now: u32) -> Self {
+        Self {
+            peers: Peers::Empty,
+            last_activity: now,
+        }
+    }
+
+    fn touch(&mut self, now: u32) {
+        self.last_activity = now;
+    }
+
+    fn is_stale(&self, now: u32) -> bool {
+        now.saturating_sub(self.last_activity) > TORRENT_TTL.as_secs() as u32
     }
 }
 
 pub struct TrackerStore {
     torrents: DashMap<InfoHash, Torrent, RandomState>,
+    epoch: Instant,
     pub stats: TrackerStats,
 }
 
@@ -101,12 +286,18 @@ impl TrackerStore {
     pub fn new() -> Self {
         Self {
             torrents: DashMap::with_hasher(RandomState::new()),
+            epoch: Instant::now(),
             stats: TrackerStats::default(),
         }
     }
 
+    fn now_secs(&self) -> u32 {
+        self.epoch.elapsed().as_secs() as u32
+    }
+
     pub fn handle_announce(&self, input: AnnounceInput, started: Instant) -> Vec<u8> {
-        let now = Instant::now();
+        let now = self.now_secs();
+        let peer_ttl = PEER_TTL.as_secs() as u32;
 
         self.torrents
             .entry(input.info_hash)
@@ -124,47 +315,29 @@ impl TrackerStore {
 
         let torrent = torrent_ref.value_mut();
         torrent.touch(now);
-        torrent.purge_expired(now);
+        torrent.peers.purge_expired(now);
 
-        let is_seeder = torrent.seeders.contains_key(&input.peer);
-        let is_leecher = torrent.leechers.contains_key(&input.peer);
-
-        let cached_reply = torrent
-            .cache
-            .as_ref()
-            .filter(|c| c.expires_at > now)
-            .map(|c| c.body.clone());
+        let existing = torrent.peers.get(&input.peer);
+        let is_seeder = existing.map(|m| m.is_seeder()).unwrap_or(false);
+        let is_leecher = existing.map(|m| !m.is_seeder()).unwrap_or(false);
 
         let (seed_count_mod, leech_count_mod) =
             Self::count_mods(input.event, input.is_seeding, is_seeder, is_leecher);
 
-        let final_res = match cached_reply {
-            None => {
-                let seeders = Torrent::sample_peers(&torrent.seeders, now, PEER_SAMPLE_LIMIT);
-                let leechers = Torrent::sample_peers(&torrent.leechers, now, PEER_SAMPLE_LIMIT);
-                query::announce_reply(
-                    torrent.seeders.len() as i64 + seed_count_mod,
-                    torrent.leechers.len() as i64 + leech_count_mod,
-                    &seeders,
-                    &leechers,
-                )
-            }
-            Some(body) => {
-                self.stats.record_cache_hit();
-                body
-            }
-        };
+        let (seeders_len, leechers_len) = torrent.peers.counts(now);
+        let seeders = torrent.peers.sample(now, true, PEER_SAMPLE_LIMIT);
+        let leechers = torrent.peers.sample(now, false, PEER_SAMPLE_LIMIT);
+        let final_res = query::announce_reply(
+            seeders_len as i64 + seed_count_mod,
+            leechers_len as i64 + leech_count_mod,
+            &seeders,
+            &leechers,
+        );
 
-        Self::apply_announce(torrent, &input, now, is_seeder, is_leecher);
+        Self::apply_announce(torrent, &input, now + peer_ttl, is_seeder, is_leecher);
 
-        if seed_count_mod != 0 || leech_count_mod != 0 {
-            torrent.cache = None;
-        } else {
+        if seed_count_mod == 0 && leech_count_mod == 0 {
             self.stats.record_nochange();
-            torrent.cache = Some(CachedReply {
-                body: final_res.clone(),
-                expires_at: now + CACHE_TTL,
-            });
         }
 
         drop(torrent_ref);
@@ -204,34 +377,25 @@ impl TrackerStore {
     fn apply_announce(
         torrent: &mut Torrent,
         input: &AnnounceInput,
-        now: Instant,
+        expires_at: u32,
         is_seeder: bool,
         is_leecher: bool,
     ) {
-        let expiry = Torrent::peer_expiry(now);
-
         if input.event == AnnounceEvent::Stopped {
-            if is_seeder {
-                torrent.seeders.remove(&input.peer);
-            } else if is_leecher {
-                torrent.leechers.remove(&input.peer);
+            if is_seeder || is_leecher {
+                torrent.peers.remove(&input.peer);
             }
             return;
         }
 
-        if input.is_seeding {
-            torrent.seeders.insert(input.peer, expiry);
-
-            if input.event == AnnounceEvent::Completed && is_leecher {
-                torrent.leechers.remove(&input.peer);
-            }
-        } else {
-            torrent.leechers.insert(input.peer, expiry);
-        }
+        // Completed: replace leecher entry with seeder (single map, one insert).
+        torrent
+            .peers
+            .insert(input.peer, PeerMeta::new(input.is_seeding, expires_at));
     }
 
     pub fn peer_exists(&self, info_hash: InfoHash, pool: PeerPool, peer: PeerId) -> bool {
-        let now = Instant::now();
+        let now = self.now_secs();
         let Some(torrent_ref) = self.torrents.get(&info_hash) else {
             return false;
         };
@@ -242,19 +406,23 @@ impl TrackerStore {
             return false;
         }
 
-        let map = match pool {
-            PeerPool::Seeder => &torrent_ref.seeders,
-            PeerPool::Leecher => &torrent_ref.leechers,
+        let Some(meta) = torrent_ref.peers.get(&peer) else {
+            return false;
         };
+        if !meta.is_live(now) {
+            return false;
+        }
 
-        map.get(&peer)
-            .map(|exp| *exp > now)
-            .unwrap_or(false)
+        match pool {
+            PeerPool::Seeder => meta.is_seeder(),
+            PeerPool::Leecher => !meta.is_seeder(),
+        }
     }
 
     pub fn seed_peers(&self, info_hash: InfoHash, pool: PeerPool, peers: &[[u8; 6]]) {
-        let now = Instant::now();
-        let expiry = Torrent::peer_expiry(now);
+        let now = self.now_secs();
+        let expires_at = now + PEER_TTL.as_secs() as u32;
+        let is_seeder = matches!(pool, PeerPool::Seeder);
 
         self.torrents
             .entry(info_hash)
@@ -272,15 +440,10 @@ impl TrackerStore {
 
         let torrent = torrent_ref.value_mut();
         torrent.touch(now);
-        torrent.cache = None;
-
-        let map = match pool {
-            PeerPool::Seeder => &mut torrent.seeders,
-            PeerPool::Leecher => &mut torrent.leechers,
-        };
-
         for peer in peers {
-            map.insert(*peer, expiry);
+            torrent
+                .peers
+                .insert(*peer, PeerMeta::new(is_seeder, expires_at));
         }
     }
 
@@ -288,33 +451,40 @@ impl TrackerStore {
         self.torrents.len()
     }
 
-    /// Approximate peer totals from map sizes (may include not-yet-purged expired peers).
+    /// Approximate peer totals from stored entries (may include not-yet-purged expired peers).
     pub fn peer_totals(&self) -> (usize, usize, usize) {
         let mut seeders = 0usize;
         let mut leechers = 0usize;
 
         for torrent in self.torrents.iter() {
-            seeders += torrent.seeders.len();
-            leechers += torrent.leechers.len();
+            let (s, l) = torrent.peers.raw_counts();
+            seeders += s;
+            leechers += l;
         }
 
         (self.torrents.len(), seeders, leechers)
     }
 
-    /// Remove torrents with no activity for longer than `TORRENT_TTL`.
+    /// Examine up to `SWEEP_SCAN` torrents and drop those past `TORRENT_TTL`.
     pub fn sweep_stale_torrents(&self) -> usize {
-        self.sweep_stale_torrents_at(Instant::now())
+        self.sweep_stale_torrents_at(self.now_secs())
     }
 
-    fn sweep_stale_torrents_at(&self, now: Instant) -> usize {
-        let mut removed = 0usize;
-        self.torrents.retain(|_, torrent| {
-            let keep = !torrent.is_stale(now);
-            if !keep {
-                removed += 1;
+    fn sweep_stale_torrents_at(&self, now: u32) -> usize {
+        let mut stale_keys = Vec::new();
+        for (scanned, entry) in self.torrents.iter().enumerate() {
+            if scanned >= SWEEP_SCAN {
+                break;
             }
-            keep
-        });
+            if entry.is_stale(now) {
+                stale_keys.push(*entry.key());
+            }
+        }
+
+        let removed = stale_keys.len();
+        for key in stale_keys {
+            self.torrents.remove(&key);
+        }
         removed
     }
 }
@@ -328,7 +498,6 @@ impl Default for TrackerStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Instant;
 
     fn announce(store: &TrackerStore, input: AnnounceInput) -> Vec<u8> {
         store.handle_announce(input, Instant::now())
@@ -448,7 +617,7 @@ mod tests {
         );
         assert_eq!(store.torrent_count(), 1);
 
-        let after_ttl = Instant::now() + TORRENT_TTL + Duration::from_secs(1);
+        let after_ttl = store.now_secs() + TORRENT_TTL.as_secs() as u32 + 1;
         assert_eq!(store.sweep_stale_torrents_at(after_ttl), 1);
         assert_eq!(store.torrent_count(), 0);
     }
@@ -469,7 +638,7 @@ mod tests {
             },
         );
 
-        assert_eq!(store.sweep_stale_torrents_at(Instant::now()), 0);
+        assert_eq!(store.sweep_stale_torrents_at(store.now_secs()), 0);
         assert_eq!(store.torrent_count(), 1);
     }
 
@@ -488,5 +657,20 @@ mod tests {
         assert_eq!(seeders, 1);
         assert_eq!(leechers, 1);
         assert_eq!(seeders + leechers, 2);
+    }
+
+    #[test]
+    fn inline_promotes_to_map_above_cap() {
+        let store = TrackerStore::new();
+        let hash = [0x58u8; 20];
+        let peers: Vec<[u8; 6]> = (0..INLINE_PEER_CAP + 2)
+            .map(|i| [10, 0, 0, i as u8, 0x11, 0x5c])
+            .collect();
+
+        store.seed_peers(hash, PeerPool::Seeder, &peers);
+        let (torrents, seeders, leechers) = store.peer_totals();
+        assert_eq!(torrents, 1);
+        assert_eq!(seeders, INLINE_PEER_CAP + 2);
+        assert_eq!(leechers, 0);
     }
 }
