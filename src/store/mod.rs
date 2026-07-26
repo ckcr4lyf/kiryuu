@@ -1,6 +1,7 @@
 mod stats;
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use ahash::RandomState;
@@ -16,8 +17,9 @@ pub type PeerId = [u8; 6];
 pub const PEER_TTL: Duration = Duration::from_secs(60 * 31);
 pub const TORRENT_TTL: Duration = Duration::from_secs(60 * 31);
 pub const SWEEP_INTERVAL: Duration = Duration::from_secs(10);
-/// Max DashMap entries examined per sweep tick (bounds page-fault storms while swapping).
-pub const SWEEP_SCAN: usize = 250_000;
+/// Round-robin stripes: each tick scans one stripe (`hash(infohash) % STRIPES`).
+/// Full coverage every `SWEEP_STRIPES * SWEEP_INTERVAL` (~10.7 min with defaults).
+pub const SWEEP_STRIPES: usize = 64;
 pub const PEER_SAMPLE_LIMIT: usize = 50;
 /// Promote from inline peers to HashMap beyond this size.
 const INLINE_PEER_CAP: usize = 8;
@@ -279,6 +281,8 @@ impl Torrent {
 pub struct TrackerStore {
     torrents: DashMap<InfoHash, Torrent, RandomState>,
     epoch: Instant,
+    /// Next stripe index for fair stale-torrent GC.
+    sweep_stripe: AtomicUsize,
     pub stats: TrackerStats,
 }
 
@@ -287,12 +291,19 @@ impl TrackerStore {
         Self {
             torrents: DashMap::with_hasher(RandomState::new()),
             epoch: Instant::now(),
+            sweep_stripe: AtomicUsize::new(0),
             stats: TrackerStats::default(),
         }
     }
 
     fn now_secs(&self) -> u32 {
         self.epoch.elapsed().as_secs() as u32
+    }
+
+    fn stripe_of(info_hash: &InfoHash) -> usize {
+        let mut buf = [0u8; 8];
+        buf.copy_from_slice(&info_hash[..8]);
+        (u64::from_le_bytes(buf) as usize) % SWEEP_STRIPES
     }
 
     pub fn handle_announce(&self, input: AnnounceInput, started: Instant) -> Vec<u8> {
@@ -465,25 +476,42 @@ impl TrackerStore {
         (self.torrents.len(), seeders, leechers)
     }
 
-    /// Examine up to `SWEEP_SCAN` torrents and drop those past `TORRENT_TTL`.
+    /// Scan one hash stripe and drop torrents past `TORRENT_TTL`.
+    /// Call repeatedly (background timer) so all stripes rotate fairly.
     pub fn sweep_stale_torrents(&self) -> usize {
         self.sweep_stale_torrents_at(self.now_secs())
     }
 
     fn sweep_stale_torrents_at(&self, now: u32) -> usize {
+        let stripe = self.sweep_stripe.fetch_add(1, Ordering::Relaxed) % SWEEP_STRIPES;
         let mut stale_keys = Vec::new();
-        for (scanned, entry) in self.torrents.iter().enumerate() {
-            if scanned >= SWEEP_SCAN {
-                break;
+
+        for entry in self.torrents.iter() {
+            let key = entry.key();
+            if Self::stripe_of(key) != stripe {
+                continue;
             }
             if entry.is_stale(now) {
-                stale_keys.push(*entry.key());
+                stale_keys.push(*key);
             }
         }
 
         let removed = stale_keys.len();
         for key in stale_keys {
             self.torrents.remove(&key);
+        }
+        removed
+    }
+
+    /// Run a full rotation of all stripes (tests / manual GC).
+    pub fn sweep_all_stripes(&self) -> usize {
+        self.sweep_all_stripes_at(self.now_secs())
+    }
+
+    fn sweep_all_stripes_at(&self, now: u32) -> usize {
+        let mut removed = 0usize;
+        for _ in 0..SWEEP_STRIPES {
+            removed += self.sweep_stale_torrents_at(now);
         }
         removed
     }
@@ -618,7 +646,8 @@ mod tests {
         assert_eq!(store.torrent_count(), 1);
 
         let after_ttl = store.now_secs() + TORRENT_TTL.as_secs() as u32 + 1;
-        assert_eq!(store.sweep_stale_torrents_at(after_ttl), 1);
+        // One stripe may miss this hash — rotate all stripes.
+        assert_eq!(store.sweep_all_stripes_at(after_ttl), 1);
         assert_eq!(store.torrent_count(), 0);
     }
 
@@ -638,8 +667,37 @@ mod tests {
             },
         );
 
-        assert_eq!(store.sweep_stale_torrents_at(store.now_secs()), 0);
+        assert_eq!(store.sweep_all_stripes_at(store.now_secs()), 0);
         assert_eq!(store.torrent_count(), 1);
+    }
+
+    #[test]
+    fn sweep_stripes_cover_all_stale_torrents() {
+        let store = TrackerStore::new();
+        let peer = [127, 0, 0, 1, 17, 0x5c];
+
+        // Spread torrents across many stripes via distinct infohashes.
+        for i in 0u16..512 {
+            let mut hash = [0u8; 20];
+            hash[0] = (i & 0xff) as u8;
+            hash[1] = (i >> 8) as u8;
+            hash[2] = 0x59;
+            announce(
+                &store,
+                AnnounceInput {
+                    info_hash: hash,
+                    peer,
+                    is_seeding: true,
+                    event: AnnounceEvent::Unknown,
+                },
+            );
+        }
+        assert_eq!(store.torrent_count(), 512);
+
+        let after_ttl = store.now_secs() + TORRENT_TTL.as_secs() as u32 + 1;
+        let removed = store.sweep_all_stripes_at(after_ttl);
+        assert_eq!(removed, 512);
+        assert_eq!(store.torrent_count(), 0);
     }
 
     #[test]
