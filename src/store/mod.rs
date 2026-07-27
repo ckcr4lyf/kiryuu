@@ -17,6 +17,9 @@ pub type PeerId = [u8; 6];
 pub const PEER_TTL: Duration = Duration::from_secs(60 * 31);
 pub const TORRENT_TTL: Duration = Duration::from_secs(60 * 31);
 pub const SWEEP_INTERVAL: Duration = Duration::from_secs(10);
+/// How often the GC thread recomputes peer/torrent gauges.
+/// Must be ≥ Prometheus scrape interval so we walk the map *less* often than scrapes.
+pub const PEER_TOTALS_REFRESH: Duration = Duration::from_secs(60);
 /// Round-robin stripes: each tick scans one stripe (`hash(infohash) % STRIPES`).
 /// Full coverage every `SWEEP_STRIPES * SWEEP_INTERVAL` (~10.7 min with defaults).
 pub const SWEEP_STRIPES: usize = 64;
@@ -283,6 +286,10 @@ pub struct TrackerStore {
     epoch: Instant,
     /// Next stripe index for fair stale-torrent GC.
     sweep_stripe: AtomicUsize,
+    /// Cached by `refresh_peer_totals` (GC thread); safe for metrics hot path.
+    cached_torrent_count: AtomicUsize,
+    cached_seeder_count: AtomicUsize,
+    cached_leecher_count: AtomicUsize,
     pub stats: TrackerStats,
 }
 
@@ -292,6 +299,9 @@ impl TrackerStore {
             torrents: DashMap::with_hasher(RandomState::new()),
             epoch: Instant::now(),
             sweep_stripe: AtomicUsize::new(0),
+            cached_torrent_count: AtomicUsize::new(0),
+            cached_seeder_count: AtomicUsize::new(0),
+            cached_leecher_count: AtomicUsize::new(0),
             stats: TrackerStats::default(),
         }
     }
@@ -462,8 +472,17 @@ impl TrackerStore {
         self.torrents.len()
     }
 
-    /// Approximate peer totals from stored entries (may include not-yet-purged expired peers).
+    /// Cached peer totals — O(1). Refresh via `refresh_peer_totals` on the GC thread.
     pub fn peer_totals(&self) -> (usize, usize, usize) {
+        (
+            self.cached_torrent_count.load(Ordering::Relaxed),
+            self.cached_seeder_count.load(Ordering::Relaxed),
+            self.cached_leecher_count.load(Ordering::Relaxed),
+        )
+    }
+
+    /// Full scan of torrents; call from a dedicated OS thread, never from Actix workers.
+    pub fn refresh_peer_totals(&self) {
         let mut seeders = 0usize;
         let mut leechers = 0usize;
 
@@ -473,7 +492,10 @@ impl TrackerStore {
             leechers += l;
         }
 
-        (self.torrents.len(), seeders, leechers)
+        self.cached_torrent_count
+            .store(self.torrents.len(), Ordering::Relaxed);
+        self.cached_seeder_count.store(seeders, Ordering::Relaxed);
+        self.cached_leecher_count.store(leechers, Ordering::Relaxed);
     }
 
     /// Scan one hash stripe and drop torrents past `TORRENT_TTL`.
@@ -709,6 +731,7 @@ mod tests {
 
         store.seed_peers(hash, PeerPool::Seeder, &[seeder]);
         store.seed_peers(hash, PeerPool::Leecher, &[leecher]);
+        store.refresh_peer_totals();
 
         let (torrents, seeders, leechers) = store.peer_totals();
         assert_eq!(torrents, 1);
@@ -726,6 +749,7 @@ mod tests {
             .collect();
 
         store.seed_peers(hash, PeerPool::Seeder, &peers);
+        store.refresh_peer_totals();
         let (torrents, seeders, leechers) = store.peer_totals();
         assert_eq!(torrents, 1);
         assert_eq!(seeders, INLINE_PEER_CAP + 2);
