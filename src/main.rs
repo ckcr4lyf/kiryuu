@@ -17,9 +17,9 @@ use handlers::test_seed::{test_peer_exists, test_seed};
 use blacklist::{Blacklist, Action, load_blacklist};
 use parking_lot::Mutex;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use clap::Parser;
-use store::{AnnounceEvent, AnnounceInput, TrackerStore, SWEEP_INTERVAL};
+use store::{AnnounceEvent, AnnounceInput, TrackerStore, PEER_TOTALS_REFRESH, SWEEP_INTERVAL};
 
 #[cfg(feature = "tracing")]
 use opentelemetry::{global, sdk::trace as sdktrace, trace::{TraceContextExt, FutureExt, TraceError, Tracer, get_active_span}, Key, KeyValue};
@@ -169,16 +169,26 @@ async fn main() -> std::io::Result<()> {
     };
 
     let store = Arc::new(TrackerStore::new());
-
+    // Never run O(N) GC / peer_totals scans on Actix workers — that wedges accept.
+    store.refresh_peer_totals();
     {
         let store_sweeper = store.clone();
-        actix_web::rt::spawn(async move {
-            let mut interval = actix_web::rt::time::interval(SWEEP_INTERVAL);
-            loop {
-                interval.tick().await;
-                store_sweeper.sweep_stale_torrents();
-            }
-        });
+        std::thread::Builder::new()
+            .name("kiryuu-gc".into())
+            .spawn(move || {
+                let mut since_totals = Duration::ZERO;
+                loop {
+                    std::thread::sleep(SWEEP_INTERVAL);
+                    store_sweeper.sweep_stale_torrents();
+                    since_totals += SWEEP_INTERVAL;
+                    // Refresh less often than Prometheus scrapes (15s) so we walk less, not more.
+                    if since_totals >= PEER_TOTALS_REFRESH {
+                        store_sweeper.refresh_peer_totals();
+                        since_totals = Duration::ZERO;
+                    }
+                }
+            })
+            .expect("failed to spawn kiryuu-gc thread");
     }
 
     let data = web::Data::new(AppState {
