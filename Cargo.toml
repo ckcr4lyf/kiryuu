@@ -15,36 +15,19 @@ serde_qs = "0.9.1"
 dashmap = "6.1.0"
 parking_lot = "0.12.3"
 ahash = "0.8.11"
-rand = "*"
 clap = { version = "4.0.30", features = ["derive"] }
-redis = { version = "0.27.5", features = ["aio", "tokio-comp", "connection-manager"], optional = true }
 opentelemetry = { version = "0.19", features = ["rt-tokio"], optional = true }
 opentelemetry-jaeger = { version = "0.18", features = ["rt-tokio"], optional = true }
 opentelemetry-otlp = { version = "0.12.0", features = ["http-proto", "reqwest-client", "reqwest-rustls"], optional = true }
 
 [features]
-default = ["redis-examples"]
 tracing = ["dep:opentelemetry", "dep:opentelemetry-jaeger", "dep:opentelemetry-otlp"]
-redis-examples = ["dep:redis"]
-
-[[example]]
-name = "redis_zscore"
-path = "examples/redis_zscore.rs"
-
-[[example]]
-name = "redis_zset"
-path = "examples/redis_zset.rs"
 
 [dev-dependencies]
 criterion = "0.4"
-hex = "0.4.3"
 
 [[bench]]
 name = "url_enc_to_hex"
-harness = false
-
-[[bench]]
-name = "make_redis_keys"
 harness = false
 
 [[bench]]

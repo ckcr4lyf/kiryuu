@@ -1,17 +1,5 @@
 pub mod types;
 
-pub fn make_redis_keys(infohash: &types::RawVal<20>) -> (types::RawVal<22>, types::RawVal<22>, types::RawVal<22>) {
-    let mut seeder_key: [u8; 22] = *b"AAAAAAAAAAAAAAAAAAAA:s";
-    let mut leecher_key: [u8; 22] = *b"AAAAAAAAAAAAAAAAAAAA:l";
-    let mut cache_key: [u8; 22] = *b"AAAAAAAAAAAAAAAAAAAA:c";
-
-    seeder_key[0..20].copy_from_slice(&infohash.0);
-    leecher_key[0..20].copy_from_slice(&infohash.0);
-    cache_key[0..20].copy_from_slice(&infohash.0);
-
-    return (types::RawVal(seeder_key), types::RawVal(leecher_key), types::RawVal(cache_key));
-}
-
 // TODO: return Result for malformed infohashes (e.g. "%A" -> Will trigger out-of-index)
 pub fn url_encoded_to_raw_u8(urlenc: &str) -> [u8; 20] {
     // Start with 20 mutable bytes on the stack

@@ -1,0 +1,42 @@
+[Unit]
+Description=kiryuu bittorrent tracker
+After=network-online.target
+Wants=network-online.target
+
+# A missing/unreadable blacklist exits 1 at startup. Give up after 5 tries in
+# 60s so it lands in `failed` instead of restarting forever.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=exec
+ExecStart=/usr/local/bin/kiryuu --blacklist /etc/kiryuu/blacklist.txt
+
+Environment=KIRYUU_ACTIX_BACKLOG=4096
+Environment=KIRYUU_ACTIX_MAX_CONNECTIONS=500
+
+# kiryuu needs a high open-file limit or it can't handle high traffic
+LimitNOFILE=4096
+
+Restart=always
+RestartSec=1s
+
+# Unprivileged: port 6969 is >1024, so no capabilities needed
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target
