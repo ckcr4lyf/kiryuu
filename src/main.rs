@@ -164,7 +164,14 @@ async fn main() -> std::io::Result<()> {
     }
 
     let blacklist = match &args.blacklist {
-        Some(path) => load_blacklist(path).unwrap(),
+        // Fail loudly rather than silently serving hashes we were told to block.
+        Some(path) => match load_blacklist(path) {
+            Ok(blacklist) => blacklist,
+            Err(e) => {
+                eprintln!("Failed to load blacklist from {}: {}", path, e);
+                std::process::exit(1);
+            }
+        },
         None => Blacklist::new(),
     };
 

@@ -43,7 +43,7 @@ There are a couple of options configurable via environment variables
 From some testing on Hetzner, it works best when run as:
 
 ```
-KIRYUU_ACTIX_BACKLOG=4096 KIRYUU_ACTIX_MAX_CONNECTIONS=500 ./kiryuu --redis-connection-string unix:///tmp/redis.sock --blacklist /tmp/blacklist.txt
+KIRYUU_ACTIX_BACKLOG=4096 KIRYUU_ACTIX_MAX_CONNECTIONS=500 ./kiryuu --blacklist /tmp/blacklist.txt
 ```
 
 With the ulimit for open files set to `4096`. For more around tuning, [see this issue](https://github.com/ckcr4lyf/kiryuu/issues/53)
@@ -69,10 +69,14 @@ There are integration tests via Gauge that run in CI. The tests are located at h
 To run them locally, you could use:
 
 ```
-$ docker run -e KIRYUU_HOST=http://172.17.0.1:6969 -e REDIS_HOST=redis://172.17.0.1:6379 ghcr.io/ckcr4lyf/kiryuu-gauge:master
+$ docker run -e KIRYUU_HOST=http://172.17.0.1:6969 ghcr.io/ckcr4lyf/kiryuu-gauge:master
 ```
 
-(Make sure you've kiryuu running locally and redis as well!)
+The suite needs the test-only endpoints (`/test/seed` and `/test/peer-exists`), so make sure you've got kiryuu running locally with `--enable-test-endpoints`:
+
+```
+$ ./kiryuu --blacklist __fixtures__/blacklist.txt --enable-test-endpoints
+```
 
 ### Dummy cURL
 
