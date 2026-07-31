@@ -97,3 +97,38 @@ $ RUSTFLAGS="-C target-cpu=native" cargo build --release --features tracing
 Kiryuu currently supports exporting traces via an OTLP endpoint. E.g. you can run a collector via [The OTEL quick start](https://opentelemetry.io/docs/collector/quick-start/).
 
 Or use [Grafana Cloud](https://grafana.com/products/cloud/) w/ [Grafana Alloy](https://grafana.com/docs/alloy/latest/).
+
+## Running as a systemd service
+
+A unit template is included at [`kiryuu.service`](./kiryuu.service). It sets the required `LimitNOFILE` (see [ulimits](#ulimits)) and the Actix tuning values from above, so you don't have to remember them per-invocation.
+
+To install:
+
+```
+$ sudo cp target/release/kiryuu /usr/local/bin/kiryuu
+$ sudo mkdir -p /etc/kiryuu && sudo cp blacklist.txt /etc/kiryuu/blacklist.txt
+$ sudo cp kiryuu.service /etc/systemd/system/
+$ sudo systemctl daemon-reload
+$ sudo systemctl enable --now kiryuu
+```
+
+Then check on it with:
+
+```
+$ systemctl status kiryuu
+$ journalctl -u kiryuu -f
+```
+
+The unit assumes the binary is at `/usr/local/bin/kiryuu` and the blacklist at `/etc/kiryuu/blacklist.txt` — edit `ExecStart` if you put them elsewhere. Note that `PrivateTmp=yes` gives the service its own `/tmp`, so a blacklist under `/tmp` won't be visible to it; either keep the blacklist outside `/tmp` or drop that line.
+
+It runs under `DynamicUser=yes` (a transient, unprivileged user), which works because kiryuu listens on 6969 and keeps no state on disk. Swap in `User=` if you'd rather have a fixed account.
+
+### Restarts
+
+`Restart=always` will bring kiryuu back up if it dies, but note that **all swarm state is in memory** — a restart drops every peer until clients re-announce.
+
+Startup fails hard if `--blacklist` points at a file that can't be read, so `StartLimitBurst=5` stops systemd from retrying forever on a missing blacklist; after 5 failures in 60s the unit stays `failed` where you'll notice it. Clear that state once you've fixed the file:
+
+```
+$ sudo systemctl reset-failed kiryuu
+```
