@@ -1,11 +1,13 @@
 mod stats;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use ahash::RandomState;
+use dashmap::mapref::entry::Entry;
 use dashmap::DashMap;
+use parking_lot::Mutex;
 
 use crate::query;
 
@@ -281,8 +283,13 @@ impl Torrent {
     }
 }
 
+type StripeKeySet = HashSet<InfoHash, RandomState>;
+
 pub struct TrackerStore {
     torrents: DashMap<InfoHash, Torrent, RandomState>,
+    /// Keys known to belong to each GC stripe. Maintained on create/delete so
+    /// sweep can walk O(stripe) instead of filtering a full DashMap iter.
+    stripe_keys: [Mutex<StripeKeySet>; SWEEP_STRIPES],
     epoch: Instant,
     /// Next stripe index for fair stale-torrent GC.
     sweep_stripe: AtomicUsize,
@@ -290,6 +297,7 @@ pub struct TrackerStore {
     cached_torrent_count: AtomicUsize,
     cached_seeder_count: AtomicUsize,
     cached_leecher_count: AtomicUsize,
+    cached_stripe_index_len: AtomicUsize,
     pub stats: TrackerStats,
 }
 
@@ -297,11 +305,15 @@ impl TrackerStore {
     pub fn new() -> Self {
         Self {
             torrents: DashMap::with_hasher(RandomState::new()),
+            stripe_keys: std::array::from_fn(|_| {
+                Mutex::new(HashSet::with_hasher(RandomState::new()))
+            }),
             epoch: Instant::now(),
             sweep_stripe: AtomicUsize::new(0),
             cached_torrent_count: AtomicUsize::new(0),
             cached_seeder_count: AtomicUsize::new(0),
             cached_leecher_count: AtomicUsize::new(0),
+            cached_stripe_index_len: AtomicUsize::new(0),
             stats: TrackerStats::default(),
         }
     }
@@ -316,18 +328,62 @@ impl TrackerStore {
         (u64::from_le_bytes(buf) as usize) % SWEEP_STRIPES
     }
 
+    fn index_insert(&self, info_hash: InfoHash) {
+        let stripe = Self::stripe_of(&info_hash);
+        self.stripe_keys[stripe].lock().insert(info_hash);
+    }
+
+    fn index_remove(&self, info_hash: &InfoHash) {
+        let stripe = Self::stripe_of(info_hash);
+        self.stripe_keys[stripe].lock().remove(info_hash);
+    }
+
+    /// Drop a torrent only if it is *still* stale, then unindex it.
+    ///
+    /// The conditional matters: a concurrent announce can refresh a torrent
+    /// between the staleness check and the delete. Removing it anyway would
+    /// discard live peers and make `handle_announce`'s `get_mut` expect fail.
+    /// Skipping the index removal when the map removal is declined also keeps
+    /// the index from losing a key whose torrent survives (an unindexed torrent
+    /// is invisible to every future sweep).
+    fn remove_torrent_if_stale(&self, info_hash: &InfoHash, now: u32) -> bool {
+        if self
+            .torrents
+            .remove_if(info_hash, |_, torrent| torrent.is_stale(now))
+            .is_some()
+        {
+            self.index_remove(info_hash);
+            return true;
+        }
+        false
+    }
+
+    /// Ensure a live torrent entry exists; index new keys only on first insert.
+    ///
+    /// Lock-order invariant: never take a `stripe_keys` mutex while holding a
+    /// DashMap guard in the *reverse* direction — i.e. code may go
+    /// map-lock → stripe-lock, but must never hold a stripe lock and then take a
+    /// map lock. `sweep_stale_torrents_at` upholds this by releasing the stripe
+    /// mutex before touching `torrents`.
+    fn ensure_torrent(&self, info_hash: InfoHash, now: u32) {
+        match self.torrents.entry(info_hash) {
+            Entry::Occupied(mut occupied) => {
+                if occupied.get().is_stale(now) {
+                    *occupied.get_mut() = Torrent::new(now);
+                }
+            }
+            Entry::Vacant(vacant) => {
+                vacant.insert(Torrent::new(now));
+                self.index_insert(info_hash);
+            }
+        }
+    }
+
     pub fn handle_announce(&self, input: AnnounceInput, started: Instant) -> Vec<u8> {
         let now = self.now_secs();
         let peer_ttl = PEER_TTL.as_secs() as u32;
 
-        self.torrents
-            .entry(input.info_hash)
-            .and_modify(|torrent| {
-                if torrent.is_stale(now) {
-                    *torrent = Torrent::new(now);
-                }
-            })
-            .or_insert_with(|| Torrent::new(now));
+        self.ensure_torrent(input.info_hash, now);
 
         let mut torrent_ref = self
             .torrents
@@ -423,7 +479,7 @@ impl TrackerStore {
 
         if torrent_ref.is_stale(now) {
             drop(torrent_ref);
-            self.torrents.remove(&info_hash);
+            self.remove_torrent_if_stale(&info_hash, now);
             return false;
         }
 
@@ -445,14 +501,7 @@ impl TrackerStore {
         let expires_at = now + PEER_TTL.as_secs() as u32;
         let is_seeder = matches!(pool, PeerPool::Seeder);
 
-        self.torrents
-            .entry(info_hash)
-            .and_modify(|torrent| {
-                if torrent.is_stale(now) {
-                    *torrent = Torrent::new(now);
-                }
-            })
-            .or_insert_with(|| Torrent::new(now));
+        self.ensure_torrent(info_hash, now);
 
         let mut torrent_ref = self
             .torrents
@@ -481,8 +530,44 @@ impl TrackerStore {
         )
     }
 
+    /// Cached stripe-index size — O(1). Compare against `kiryuu_torrent_count`
+    /// to spot index drift.
+    pub fn stripe_index_size(&self) -> usize {
+        self.cached_stripe_index_len.load(Ordering::Relaxed)
+    }
+
+    /// Total keys tracked across all stripe indexes.
+    fn stripe_index_len(&self) -> usize {
+        self.stripe_keys.iter().map(|s| s.lock().len()).sum()
+    }
+
+    /// Re-index torrents that are missing a stripe entry, returning how many were
+    /// repaired.
+    ///
+    /// A create racing a sweep delete can leave a torrent in the map but absent
+    /// from the index: `remove_torrent_if_stale` drops the map entry, an announce
+    /// re-creates it (re-inserting the key), then the sweep's `index_remove`
+    /// deletes that fresh index entry. Such a torrent is invisible to every
+    /// future sweep and would leak permanently, so heal it here. The sweep
+    /// already heals the opposite direction (index entry, no torrent).
+    ///
+    /// O(N) — GC thread only, and only when the sizes actually disagree.
+    fn repair_stripe_index(&self) -> usize {
+        let mut repaired = 0usize;
+        for torrent in self.torrents.iter() {
+            let info_hash = *torrent.key();
+            let stripe = Self::stripe_of(&info_hash);
+            // map-lock → stripe-lock is the permitted order; see `ensure_torrent`.
+            if self.stripe_keys[stripe].lock().insert(info_hash) {
+                repaired += 1;
+            }
+        }
+        repaired
+    }
+
     /// Full scan of torrents; call from a dedicated OS thread, never from Actix workers.
     pub fn refresh_peer_totals(&self) {
+        let started = Instant::now();
         let mut seeders = 0usize;
         let mut leechers = 0usize;
 
@@ -492,10 +577,27 @@ impl TrackerStore {
             leechers += l;
         }
 
+        let torrent_count = self.torrents.len();
+        let mut index_len = self.stripe_index_len();
+
+        // Size disagreement means drift in one direction or the other. Surplus
+        // index keys are orphans the sweep clears within a full rotation; a
+        // shortfall is an unindexed torrent, which never GCs on its own.
+        if index_len != torrent_count {
+            let repaired = self.repair_stripe_index();
+            if repaired > 0 {
+                self.stats.record_index_repair(repaired);
+                index_len = self.stripe_index_len();
+            }
+        }
+
         self.cached_torrent_count
-            .store(self.torrents.len(), Ordering::Relaxed);
+            .store(torrent_count, Ordering::Relaxed);
         self.cached_seeder_count.store(seeders, Ordering::Relaxed);
         self.cached_leecher_count.store(leechers, Ordering::Relaxed);
+        self.cached_stripe_index_len
+            .store(index_len, Ordering::Relaxed);
+        self.stats.record_totals_refresh(started.elapsed());
     }
 
     /// Scan one hash stripe and drop torrents past `TORRENT_TTL`.
@@ -505,23 +607,41 @@ impl TrackerStore {
     }
 
     fn sweep_stale_torrents_at(&self, now: u32) -> usize {
+        let started = Instant::now();
         let stripe = self.sweep_stripe.fetch_add(1, Ordering::Relaxed) % SWEEP_STRIPES;
+
+        // Snapshot keys for this stripe only — O(stripe), not O(N).
+        let keys: Vec<InfoHash> = self.stripe_keys[stripe].lock().iter().copied().collect();
+        let visited = keys.len();
+
         let mut stale_keys = Vec::new();
+        let mut orphan_keys = Vec::new();
 
-        for entry in self.torrents.iter() {
-            let key = entry.key();
-            if Self::stripe_of(key) != stripe {
-                continue;
-            }
-            if entry.is_stale(now) {
-                stale_keys.push(*key);
+        for key in keys {
+            match self.torrents.get(&key) {
+                None => orphan_keys.push(key),
+                Some(torrent) if torrent.is_stale(now) => stale_keys.push(key),
+                Some(_) => {}
             }
         }
 
-        let removed = stale_keys.len();
+        let orphans = orphan_keys.len();
+        if !orphan_keys.is_empty() {
+            let mut index = self.stripe_keys[stripe].lock();
+            for key in orphan_keys {
+                index.remove(&key);
+            }
+        }
+
+        let mut removed = 0usize;
         for key in stale_keys {
-            self.torrents.remove(&key);
+            if self.remove_torrent_if_stale(&key, now) {
+                removed += 1;
+            }
         }
+
+        self.stats
+            .record_sweep(started.elapsed(), visited, removed, orphans);
         removed
     }
 
@@ -715,11 +835,170 @@ mod tests {
             );
         }
         assert_eq!(store.torrent_count(), 512);
+        assert_eq!(stripe_index_len(&store), 512);
 
         let after_ttl = store.now_secs() + TORRENT_TTL.as_secs() as u32 + 1;
         let removed = store.sweep_all_stripes_at(after_ttl);
         assert_eq!(removed, 512);
         assert_eq!(store.torrent_count(), 0);
+        assert_eq!(stripe_index_len(&store), 0);
+    }
+
+    #[test]
+    fn stripe_index_tracks_new_torrent() {
+        let store = TrackerStore::new();
+        let hash = [0x5au8; 20];
+        let peer = [127, 0, 0, 1, 17, 0x5c];
+        let stripe = TrackerStore::stripe_of(&hash);
+
+        assert!(store.stripe_keys[stripe].lock().is_empty());
+
+        announce(
+            &store,
+            AnnounceInput {
+                info_hash: hash,
+                peer,
+                is_seeding: true,
+                event: AnnounceEvent::Unknown,
+            },
+        );
+
+        assert!(store.stripe_keys[stripe].lock().contains(&hash));
+        assert_eq!(stripe_index_len(&store), 1);
+
+        // Second announce must not duplicate the index entry.
+        announce(
+            &store,
+            AnnounceInput {
+                info_hash: hash,
+                peer,
+                is_seeding: true,
+                event: AnnounceEvent::Unknown,
+            },
+        );
+        assert_eq!(stripe_index_len(&store), 1);
+    }
+
+    #[test]
+    fn sweep_heals_orphan_stripe_index_entries() {
+        let store = TrackerStore::new();
+        let hash = [0x5bu8; 20];
+        let stripe = TrackerStore::stripe_of(&hash);
+
+        // Simulate index lag: key in stripe index but not in torrents map.
+        store.index_insert(hash);
+        assert!(store.stripe_keys[stripe].lock().contains(&hash));
+        assert_eq!(store.torrent_count(), 0);
+
+        // Rotate until we hit this stripe (and the rest).
+        let removed = store.sweep_all_stripes_at(store.now_secs());
+        assert_eq!(removed, 0);
+        assert!(!store.stripe_keys[stripe].lock().contains(&hash));
+        assert_eq!(stripe_index_len(&store), 0);
+    }
+
+    fn stripe_index_len(store: &TrackerStore) -> usize {
+        store.stripe_keys.iter().map(|s| s.lock().len()).sum()
+    }
+
+    #[test]
+    fn remove_declines_when_torrent_no_longer_stale() {
+        let store = TrackerStore::new();
+        let hash = [0x5cu8; 20];
+        let peer = [127, 0, 0, 1, 17, 0x5c];
+
+        announce(
+            &store,
+            AnnounceInput {
+                info_hash: hash,
+                peer,
+                is_seeding: true,
+                event: AnnounceEvent::Unknown,
+            },
+        );
+
+        // Mirrors a sweep that decided `hash` was stale, then raced an announce
+        // that refreshed it: the delete must be declined and the index kept.
+        assert!(!store.remove_torrent_if_stale(&hash, store.now_secs()));
+        assert_eq!(store.torrent_count(), 1);
+        assert_eq!(stripe_index_len(&store), 1);
+        assert!(store.peer_exists(hash, PeerPool::Seeder, peer));
+    }
+
+    #[test]
+    fn refresh_reindexes_unindexed_torrents() {
+        let store = TrackerStore::new();
+        let hash = [0x5du8; 20];
+        let peer = [127, 0, 0, 1, 17, 0x5c];
+
+        announce(
+            &store,
+            AnnounceInput {
+                info_hash: hash,
+                peer,
+                is_seeding: true,
+                event: AnnounceEvent::Unknown,
+            },
+        );
+
+        // Simulate a create racing a sweep delete: torrent lives on in the map
+        // but its stripe entry was dropped, so no sweep would ever visit it.
+        store.index_remove(&hash);
+        assert_eq!(stripe_index_len(&store), 0);
+
+        let after_ttl = store.now_secs() + TORRENT_TTL.as_secs() as u32 + 1;
+        assert_eq!(store.sweep_all_stripes_at(after_ttl), 0);
+        assert_eq!(store.torrent_count(), 1, "unindexed torrent leaks");
+
+        store.refresh_peer_totals();
+        assert_eq!(stripe_index_len(&store), 1);
+        assert_eq!(store.stats.sweep_snapshot().index_repaired, 1);
+        assert_eq!(store.stripe_index_size(), 1);
+
+        // Healed, so the next rotation collects it.
+        assert_eq!(store.sweep_all_stripes_at(after_ttl), 1);
+        assert_eq!(store.torrent_count(), 0);
+    }
+
+    #[test]
+    fn sweep_records_visited_and_removed() {
+        let store = TrackerStore::new();
+        let hash = [0x5eu8; 20];
+        let peer = [127, 0, 0, 1, 17, 0x5c];
+
+        announce(
+            &store,
+            AnnounceInput {
+                info_hash: hash,
+                peer,
+                is_seeding: true,
+                event: AnnounceEvent::Unknown,
+            },
+        );
+
+        let after_ttl = store.now_secs() + TORRENT_TTL.as_secs() as u32 + 1;
+        store.sweep_all_stripes_at(after_ttl);
+
+        let sweep = store.stats.sweep_snapshot();
+        assert_eq!(sweep.count, SWEEP_STRIPES as u64);
+        // One key indexed, so exactly one stripe visits exactly one key.
+        assert_eq!(sweep.visited, 1);
+        assert_eq!(sweep.removed, 1);
+        assert_eq!(sweep.orphans_removed, 0);
+    }
+
+    #[test]
+    fn sweep_records_healed_orphans() {
+        let store = TrackerStore::new();
+        let hash = [0x5fu8; 20];
+
+        store.index_insert(hash);
+        store.sweep_all_stripes_at(store.now_secs());
+
+        let sweep = store.stats.sweep_snapshot();
+        assert_eq!(sweep.visited, 1);
+        assert_eq!(sweep.removed, 0);
+        assert_eq!(sweep.orphans_removed, 1);
     }
 
     #[test]
