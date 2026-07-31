@@ -16,6 +16,27 @@ pub struct TrackerStats {
     histogram_buckets: [AtomicU64; HISTOGRAM_BUCKET_UPPER_BOUNDS_SECS.len()],
     histogram_sum_us: AtomicU64,
     histogram_count: AtomicU64,
+    /// GC-thread sweep accounting. Written only by the `kiryuu-gc` thread.
+    sweep_last_us: AtomicU64,
+    sweep_sum_us: AtomicU64,
+    sweep_count: AtomicU64,
+    sweep_visited: AtomicU64,
+    sweep_removed: AtomicU64,
+    sweep_orphans_removed: AtomicU64,
+    stripe_index_repaired: AtomicU64,
+    totals_refresh_last_us: AtomicU64,
+}
+
+/// Snapshot of GC sweep counters for `/metrics`.
+pub struct SweepStats {
+    pub last_duration_us: u64,
+    pub duration_sum_us: u64,
+    pub count: u64,
+    pub visited: u64,
+    pub removed: u64,
+    pub orphans_removed: u64,
+    pub index_repaired: u64,
+    pub totals_refresh_last_us: u64,
 }
 
 impl Default for TrackerStats {
@@ -29,6 +50,14 @@ impl Default for TrackerStats {
             histogram_buckets: std::array::from_fn(|_| AtomicU64::new(0)),
             histogram_sum_us: AtomicU64::new(0),
             histogram_count: AtomicU64::new(0),
+            sweep_last_us: AtomicU64::new(0),
+            sweep_sum_us: AtomicU64::new(0),
+            sweep_count: AtomicU64::new(0),
+            sweep_visited: AtomicU64::new(0),
+            sweep_removed: AtomicU64::new(0),
+            sweep_orphans_removed: AtomicU64::new(0),
+            stripe_index_repaired: AtomicU64::new(0),
+            totals_refresh_last_us: AtomicU64::new(0),
         }
     }
 }
@@ -68,6 +97,43 @@ impl TrackerStats {
 
     pub fn record_nochange(&self) {
         self.nochange_count.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn record_sweep(&self, duration: Duration, visited: usize, removed: usize, orphans: usize) {
+        let us = u64::try_from(duration.as_micros()).unwrap_or(u64::MAX);
+
+        self.sweep_last_us.store(us, Ordering::Relaxed);
+        self.sweep_sum_us.fetch_add(us, Ordering::Relaxed);
+        self.sweep_count.fetch_add(1, Ordering::Relaxed);
+        self.sweep_visited
+            .fetch_add(visited as u64, Ordering::Relaxed);
+        self.sweep_removed
+            .fetch_add(removed as u64, Ordering::Relaxed);
+        self.sweep_orphans_removed
+            .fetch_add(orphans as u64, Ordering::Relaxed);
+    }
+
+    pub fn record_totals_refresh(&self, duration: Duration) {
+        let us = u64::try_from(duration.as_micros()).unwrap_or(u64::MAX);
+        self.totals_refresh_last_us.store(us, Ordering::Relaxed);
+    }
+
+    pub fn record_index_repair(&self, repaired: usize) {
+        self.stripe_index_repaired
+            .fetch_add(repaired as u64, Ordering::Relaxed);
+    }
+
+    pub fn sweep_snapshot(&self) -> SweepStats {
+        SweepStats {
+            last_duration_us: self.sweep_last_us.load(Ordering::Relaxed),
+            duration_sum_us: self.sweep_sum_us.load(Ordering::Relaxed),
+            count: self.sweep_count.load(Ordering::Relaxed),
+            visited: self.sweep_visited.load(Ordering::Relaxed),
+            removed: self.sweep_removed.load(Ordering::Relaxed),
+            orphans_removed: self.sweep_orphans_removed.load(Ordering::Relaxed),
+            index_repaired: self.stripe_index_repaired.load(Ordering::Relaxed),
+            totals_refresh_last_us: self.totals_refresh_last_us.load(Ordering::Relaxed),
+        }
     }
 
     pub fn snapshot(&self) -> (u64, u64, u64, i64, i64) {

@@ -15,6 +15,7 @@ pub async fn metrics(data: web::Data<AppState>) -> HttpResponse {
     let active_requests = *data.active_requests.lock();
     let (torrent_count, seeder_count, leecher_count) = data.store.peer_totals();
     let peer_count = seeder_count + leecher_count;
+    let sweep = data.store.stats.sweep_snapshot();
 
     let (resident_bytes, allocated_bytes) = (|| {
         epoch::advance().ok()?;
@@ -36,7 +37,16 @@ pub async fn metrics(data: web::Data<AppState>) -> HttpResponse {
          kiryuu_seeder_count {}\n\
          kiryuu_leecher_count {}\n\
          kiryuu_resident_bytes {}\n\
-         kiryuu_allocated_bytes {}\n",
+         kiryuu_allocated_bytes {}\n\
+         kiryuu_stripe_index_size {}\n\
+         kiryuu_stripe_index_repaired {}\n\
+         kiryuu_sweep_duration_seconds {}\n\
+         kiryuu_sweep_duration_seconds_sum {}\n\
+         kiryuu_sweep_count {}\n\
+         kiryuu_sweep_visited {}\n\
+         kiryuu_sweep_removed {}\n\
+         kiryuu_sweep_orphans_removed {}\n\
+         kiryuu_peer_totals_refresh_duration_seconds {}\n",
         PROMETHEUS_LABELS,
         nochange,
         PROMETHEUS_LABELS,
@@ -54,6 +64,15 @@ pub async fn metrics(data: web::Data<AppState>) -> HttpResponse {
         leecher_count,
         resident_bytes,
         allocated_bytes,
+        data.store.stripe_index_size(),
+        sweep.index_repaired,
+        sweep.last_duration_us as f64 / 1_000_000.0,
+        sweep.duration_sum_us as f64 / 1_000_000.0,
+        sweep.count,
+        sweep.visited,
+        sweep.removed,
+        sweep.orphans_removed,
+        sweep.totals_refresh_last_us as f64 / 1_000_000.0,
     );
 
     for (bucket_count, upper_bound) in histogram_buckets
