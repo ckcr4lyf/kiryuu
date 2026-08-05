@@ -1,6 +1,12 @@
 /target
 sandbox/
 
+# local healthz probe logs (scripts/healthz-probe.sh)
+healthz-probe.csv
+healthz-probe.out
+/scripts/
+
+
 # flamegraph stuffs
 *.svg
 *.data

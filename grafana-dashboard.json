@@ -146,7 +146,7 @@
       "type": "stat",
       "id": 2,
       "title": "Stripe index drift",
-      "description": "kiryuu_stripe_index_size - kiryuu_torrent_count. Should be flat 0. A NEGATIVE value (red) is a shortfall: an unindexed torrent that never GCs on its own — an unbounded leak. A POSITIVE value (amber) is surplus index keys, which the sweep clears within one full rotation (~10.7 min).",
+      "description": "kiryuu_stripe_index_size - kiryuu_torrent_count. Should be flat 0. A NEGATIVE value (red) is a shortfall: an unindexed torrent that never GCs on its own — an unbounded leak. A POSITIVE value (amber) is surplus index keys, which the sweep clears within one full rotation (~42.7 min).",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1206,7 +1206,7 @@
       "type": "timeseries",
       "id": 30,
       "title": "Sweep duration",
-      "description": "kiryuu_sweep_duration_seconds_sum / kiryuu_sweep_count behaves as a summary pair, giving mean cost per sweep; plotted against the last observed sweep. Each sweep scans one of 64 stripes, so this is O(stripe), not O(N).",
+      "description": "kiryuu_sweep_duration_seconds_sum / kiryuu_sweep_count behaves as a summary pair, giving mean cost per sweep; plotted against the last observed sweep. Each sweep scans one of 256 stripes, so this is O(stripe), not O(N).",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1308,7 +1308,7 @@
       "type": "timeseries",
       "id": 31,
       "title": "Rotation coverage",
-      "description": "increase(kiryuu_sweep_visited[11m]) / kiryuu_torrent_count. 64 stripes at 10s each = one full pass every ~10.7 min, so this should sit at ~1.0. Materially below 1.0 means torrents are aging past TORRENT_TTL (31 min) without ever being examined.",
+      "description": "increase(kiryuu_sweep_visited[43m]) / kiryuu_torrent_count. 256 stripes at 10s each = one full pass every ~42.7 min, so this should sit at ~1.0. Materially below 1.0 means torrents are aging past TORRENT_TTL (31 min) without ever being examined.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1326,7 +1326,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "increase(kiryuu_sweep_visited[11m]) / kiryuu_torrent_count",
+          "expr": "increase(kiryuu_sweep_visited[43m]) / kiryuu_torrent_count",
           "range": true,
           "legendFormat": "coverage"
         }

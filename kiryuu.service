@@ -12,8 +12,8 @@ StartLimitBurst=5
 Type=exec
 ExecStart=/usr/local/bin/kiryuu --blacklist /etc/kiryuu/blacklist.txt
 
-Environment=KIRYUU_ACTIX_BACKLOG=4096
-Environment=KIRYUU_ACTIX_MAX_CONNECTIONS=500
+Environment=KIRYUU_ACTIX_BACKLOG=8192
+Environment=KIRYUU_ACTIX_MAX_CONNECTIONS=2000
 
 # Nothing on the request path should log, so stdout is dropped rather than
 # persisted to the journal at announce rate. Startup errors use stderr.
@@ -21,7 +21,7 @@ StandardOutput=null
 StandardError=journal
 
 # kiryuu needs a high open-file limit or it can't handle high traffic
-LimitNOFILE=4096
+LimitNOFILE=8192
 
 Restart=always
 RestartSec=1s
