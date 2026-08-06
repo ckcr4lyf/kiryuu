@@ -23,8 +23,8 @@ pub const SWEEP_INTERVAL: Duration = Duration::from_secs(10);
 /// Must be ≥ Prometheus scrape interval so we walk the map *less* often than scrapes.
 pub const PEER_TOTALS_REFRESH: Duration = Duration::from_secs(60);
 /// Round-robin stripes: each tick scans one stripe (`hash(infohash) % STRIPES`).
-/// Full coverage every `SWEEP_STRIPES * SWEEP_INTERVAL` (~10.7 min with defaults).
-pub const SWEEP_STRIPES: usize = 64;
+/// Full coverage every `SWEEP_STRIPES * SWEEP_INTERVAL` (~42.7 min with defaults).
+pub const SWEEP_STRIPES: usize = 256;
 pub const PEER_SAMPLE_LIMIT: usize = 50;
 /// Promote from inline peers to HashMap beyond this size.
 const INLINE_PEER_CAP: usize = 8;

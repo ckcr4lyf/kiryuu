@@ -1,5 +1,17 @@
 pub mod types;
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Announces whose info_hash decoded to more than 20 bytes. Bumped on the request
+/// path, so it stays a single relaxed add — this used to be a `println!`, which
+/// took the stdout lock once per malformed request and let any client flood the
+/// journal at announce rate.
+static OVERLONG_INFOHASH_COUNT: AtomicU64 = AtomicU64::new(0);
+
+pub fn overlong_infohash_count() -> u64 {
+    OVERLONG_INFOHASH_COUNT.load(Ordering::Relaxed)
+}
+
 // TODO: return Result for malformed infohashes (e.g. "%A" -> Will trigger out-of-index)
 pub fn url_encoded_to_raw_u8(urlenc: &str) -> [u8; 20] {
     // Start with 20 mutable bytes on the stack
@@ -14,8 +26,9 @@ pub fn url_encoded_to_raw_u8(urlenc: &str) -> [u8; 20] {
 
     while pos_urlenc < max {
         if pos_raw_infohash >= 20 {
-            // We have already filled the 20 bytes of info hash, so we can stop
-            println!("Warning: Info hash is longer than 20 bytes, ignoring extra bytes: {}", urlenc);
+            // We have already filled the 20 bytes of info hash, so we can stop.
+            // Count it instead of logging — see OVERLONG_INFOHASH_COUNT.
+            OVERLONG_INFOHASH_COUNT.fetch_add(1, Ordering::Relaxed);
             break;
         }
         

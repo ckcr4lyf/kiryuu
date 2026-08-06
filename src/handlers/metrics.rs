@@ -1,6 +1,7 @@
 use actix_web::{get, http::{header, StatusCode}, web, HttpResponse};
 use tikv_jemalloc_ctl::{epoch, stats};
 
+use crate::byte_functions::overlong_infohash_count;
 use crate::store::HISTOGRAM_BUCKET_UPPER_BOUNDS_SECS;
 use crate::AppState;
 
@@ -46,7 +47,8 @@ pub async fn metrics(data: web::Data<AppState>) -> HttpResponse {
          kiryuu_sweep_visited {}\n\
          kiryuu_sweep_removed {}\n\
          kiryuu_sweep_orphans_removed {}\n\
-         kiryuu_peer_totals_refresh_duration_seconds {}\n",
+         kiryuu_peer_totals_refresh_duration_seconds {}\n\
+         kiryuu_malformed_infohash_count {}\n",
         PROMETHEUS_LABELS,
         nochange,
         PROMETHEUS_LABELS,
@@ -73,6 +75,7 @@ pub async fn metrics(data: web::Data<AppState>) -> HttpResponse {
         sweep.removed,
         sweep.orphans_removed,
         sweep.totals_refresh_last_us as f64 / 1_000_000.0,
+        overlong_infohash_count(),
     );
 
     for (bucket_count, upper_bound) in histogram_buckets
