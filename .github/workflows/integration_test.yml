@@ -118,6 +118,6 @@ jobs:
           ./kiryuu --blacklist __fixtures__/blacklist.txt --enable-test-endpoints &
 
       - name: Execute Gauge
-        uses: docker://ghcr.io/ckcr4lyf/kiryuu-gauge@sha256:dc83b1b4b62fad7c08946b75300bc42af440daf4fdc3c7383e156e56ccd2b66b
+        uses: docker://ghcr.io/ckcr4lyf/kiryuu-gauge@sha256:3c209bd6ad3b43bb359c2faf83f56fae848868ba42b5a2ab809855ec46e19497
         env:
           KIRYUU_HOST: http://172.17.0.1:6969
